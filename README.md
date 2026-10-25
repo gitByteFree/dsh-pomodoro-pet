@@ -229,12 +229,13 @@ Available while the panel is open:
 ## Development
 
 - No build step: `client.js` is a browser-ready bundle
+- The English dictionary lives inline in `client.js`; `node scripts/sync-i18n.mjs` regenerates the readable `i18n-en.mjs` copy and the tests fail if it is stale
 - Agent tool parameters, HTTP API, file map, and storage tables: see [DEVELOPMENT.md](https://github.com/gitByteFree/dsh-pomodoro-pet/blob/main/DEVELOPMENT.md)
 - Run the unit tests:
 
   ```bash
-  node --test engine.test.mjs v03-engine.test.mjs v04-engine.test.mjs agent-bridge.test.mjs
-  # 107 tests, all passing
+  node --test
+  # 121 tests, all passing
   ```
 
 ## License

@@ -54,7 +54,9 @@ dsh-pomodoro-pet/
 ├── achievement-engine.js # 18 个成就定义与判定
 ├── agent-bridge.js       # DSH 会话 / Agent / 工具事件桥
 ├── client.js             # Client 半：全部 UI（React，零构建，词典已内联）
-├── i18n-en.mjs           # 英文词典**源文件**（仅开发用；client.js 已内联副本）
+├── i18n-en.mjs           # 英文词典可读副本（由 client.js 生成，仅开发用）
+├── scripts/
+│   └── sync-i18n.mjs     # 重新生成 i18n-en.mjs（`node scripts/sync-i18n.mjs`）
 ├── locale/
 │   ├── zh.json           # 侧边栏 / 页面标题的中文元数据
 │   └── en.json           # 同上（英文）
@@ -64,7 +66,7 @@ dsh-pomodoro-pet/
 └── *.test.mjs            # 引擎与桥接单元测试（可选，安装不需要）
 ```
 
-> `i18n-en.mjs` 与 `*.test.mjs` **不是运行时依赖**，可以不拷。保留它们只是为了以后改词条/跑测试。
+> `i18n-en.mjs`、`scripts/` 与 `*.test.mjs` **不是运行时依赖**，可以不拷。保留它们只是为了以后改词条/跑测试。
 
 ---
 
@@ -180,8 +182,8 @@ GUI 侧应能看到：
 
 ```bash
 cd ~/dsh-plugins/dsh-pomodoro-pet
-node --test engine.test.mjs v03-engine.test.mjs v04-engine.test.mjs agent-bridge.test.mjs
-# 期望：tests 107 / pass 107 / fail 0
+node --test
+# 期望：tests 121 / pass 121 / fail 0
 ```
 
 ---

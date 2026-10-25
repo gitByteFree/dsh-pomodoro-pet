@@ -13,9 +13,10 @@ The plugin needs these services from the DSH profile:
 | Side | Services |
 | --- | --- |
 | Host | `storageDomain`, `webServer`, `tools`, `timer` |
+| Host (fence) | `connection` — resolved per request with `ctx.get('connection')` |
 | Client | `slots`, `locale` |
 
-The stock `web` profile provides all of them.
+The stock `web` profile provides all of them. If `connection` is missing, every HTTP route fails closed with `503` rather than serving unauthenticated requests.
 
 ## File map
 
@@ -26,10 +27,11 @@ stats-engine.js       Heatmap, trends, quadrant/hour distributions, reports
 achievement-engine.js 18 achievement definitions and evaluation
 agent-bridge.js       Folds DSH session/agent/tool activity into context
 client.js             Client half: the complete React UI (no build step)
-i18n-en.mjs           English dictionary source (client.js has an inlined copy)
+i18n-en.mjs           Generated readable copy of the dictionary in client.js
 locale/*.json         Localized plugin metadata
+scripts/sync-i18n.mjs Regenerates i18n-en.mjs from client.js
 install.sh            Idempotent installer
-*.test.mjs            Engine and bridge unit tests
+*.test.mjs            Engine, bridge, Host-route, and i18n guard tests
 cordis.patch.yml      One Host plugin row
 ```
 
@@ -61,7 +63,9 @@ Guarantees:
 
 ## HTTP API
 
-All routes are registered on `ctx.webServer` behind the DSH connection trust fence, so they are reachable from the Web UI session.
+All routes are registered on `ctx.webServer` behind the DSH connection trust fence, so they are reachable from the Web UI session. The fence is resolved per request (`ctx.get('connection')`): untrusted requests get the fence's `401`/`403`, and if the service is unavailable every route fails closed with `503`.
+
+`POST /settings` validates the whole patch before writing anything (`SETTING_RULES`): unknown keys, wrong types, out-of-range numeric strings, and invalid IANA time zones return `400 { ok: false, code: 'invalid', field }`. Persisted settings are re-sanitized on boot, so a corrupt value written by an older version cannot break `/state` or the SSE stream.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -82,21 +86,27 @@ All routes are registered on `ctx.webServer` behind the DSH connection trust fen
 
 ## Data and storage
 
-- Domain storage: `storageDomain: pomodoro_pet`, persisted at `$DSH_HOME/storages/pomodoro_pet.json` on the default single-file layout.
+- Domain storage: `storageDomain: pomodoro_pet`, persisted at `$DSH_HOME/storages/pomodoro_pet.json` on the default single-file layout. Every row write republishes the whole file, so tables are kept bounded.
 - Tables: `pets`, `sessions`, `days`, `settings`, `tasks`, `groups`, `achievements`, `inventory`, `proposals`, `audit_log`.
+- Retention: settled `sessions` rows older than the `maxSessionDays` plugin config (default 90) are deleted in small batches (one batch on boot, then one per reconcile tick) because every row delete republishes the whole single-layout file. `days` aggregates behind the heatmap/reports are never pruned; waiting/running rows are never pruned.
 - Migration: stop DSH, copy `pomodoro_pet.json` to the same path on the new machine, then start DSH. Pet level, tasks, stats, and achievements are restored.
 - Device preferences live in browser `localStorage` and do not travel with the data file: `pp-pet-pos`, `pp-pet-collapsed`, `pp-show-agent`, `pp-show-context`, `pp-seen-settlement`.
 
 ## Development
 
-There is no build step. `client.js` is the ready-to-serve browser bundle with the English dictionary inlined; `i18n-en.mjs` is the dictionary source kept for editing.
+There is no build step. `client.js` is the ready-to-serve browser bundle and it owns the only English dictionary the browser executes (the `EN_TEXT` / `PATTERNS` blocks between the `i18n:*` markers). `i18n-en.mjs` is a generated, readable copy: after editing the inline dictionary run `node scripts/sync-i18n.mjs`; `i18n.test.mjs` fails when the copy is stale.
+
+Two rules keep user data out of the translation pipeline (both pinned by `i18n.test.mjs`):
+
+- wrap task names, group names, session labels, workspace names, and skill names with `raw(value)`; `h()` unwraps it to a plain string and never translates it;
+- when data must sit inside UI copy, build the string with `trRaw('删除任务 {title}', { title })` for anything passed to `h()` (the result is already translated, so `h()` must not translate it a second time), or `trf(...)` when the result is consumed as a plain string (confirm dialogs, canvas, templates). The template is translated first; the data is only substituted afterwards.
 
 Changing `client.js` needs a browser refresh (hard-refresh if the client bundle is cached). Changing any Host file (`index.js`, `*-engine.js`) needs a `dsh web` restart.
 
 Run the tests:
 
 ```bash
-node --test engine.test.mjs v03-engine.test.mjs v04-engine.test.mjs agent-bridge.test.mjs
+node --test
 ```
 
-Expected: 107 tests, 107 passing.
+Expected: 121 tests, 121 passing. `host.test.mjs` loads the real `apply()` on an in-memory context and pins the trust fence, settings validation, and the break→waiting persistence/restart behavior; `i18n.test.mjs` pins dictionary sync and the `raw()` / `trRaw()` / `trf()` data boundary.

@@ -229,12 +229,13 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/stat
 ## 开发者
 
 - 插件零构建：`client.js` 是可直接提供给浏览器加载的 bundle
+- 英文词典内联在 `client.js`；`node scripts/sync-i18n.mjs` 会重新生成可读的 `i18n-en.mjs` 副本，测试会校验它是否过期
 - Agent 工具参数、HTTP API、文件结构与存储表：见 [DEVELOPMENT.md](https://github.com/gitByteFree/dsh-pomodoro-pet/blob/main/DEVELOPMENT.md)
 - 跑单元测试：
 
   ```bash
-  node --test engine.test.mjs v03-engine.test.mjs v04-engine.test.mjs agent-bridge.test.mjs
-  # 107 个测试全部通过
+  node --test
+  # 121 个测试全部通过
   ```
 
 ## 许可证
