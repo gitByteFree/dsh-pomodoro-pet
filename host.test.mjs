@@ -42,11 +42,12 @@ function createStore() {
 }
 
 /** In-memory context with the services index.js touches. */
-function createHarness(store, { withConnection = true } = {}) {
+function createHarness(store, { withConnection = true, agents = [] } = {}) {
   const routes = new Map()
   const timers = []
   const heard = { rejectionHeaders: null }
   const fence = { rejection: undefined }
+  const events = new Map()
   const services = {
     connection: withConnection
       ? {
@@ -58,14 +59,20 @@ function createHarness(store, { withConnection = true } = {}) {
       : undefined,
     sessionTitle: { get: () => null },
     sessions: { get: () => undefined },
-    agents: { roots: () => [] },
+    agents: { list: () => agents, roots: () => agents },
     skills: { list: async () => [] },
   }
   const ctx = {
     logger: { info() {}, warn() {}, error() {} },
     get: (name) => services[name],
-    on: () => () => {},
-    emit: () => {},
+    on: (name, fn) => {
+      if (!events.has(name)) events.set(name, new Set())
+      events.get(name).add(fn)
+      return () => events.get(name)?.delete(fn)
+    },
+    emit: (name, ...args) => {
+      for (const fn of [...(events.get(name) ?? [])]) fn(...args)
+    },
     effect: (fn) => {
       try {
         const result = fn()
@@ -96,7 +103,34 @@ function createHarness(store, { withConnection = true } = {}) {
       },
     },
   }
-  return { ctx, routes, timers, fence, heard }
+  return { ctx, routes, timers, fence, heard, events, emit: ctx.emit }
+}
+
+/** Minimal root agent double: `ctx.on` captures the pass-through listeners. */
+function createFakeAgent(session, { handlers } = {}) {
+  const own = handlers ?? new Map()
+  return {
+    id: session.id,
+    session,
+    ctx: {
+      on(name, fn) {
+        own.set(name, fn)
+        return () => own.delete(name)
+      },
+    },
+    handlers: own,
+  }
+}
+
+const makeSession = (id, overrides = {}) => ({
+  id,
+  header: { origin: 'main', delegationDepth: 0, cwd: '/work/project', createdAt: Date.now(), ...overrides },
+})
+
+const getContext = async (harness) => {
+  const res = await callRoute(harness, '/dsh-pomodoro/context')
+  assert.equal(res.statusCode, 200, res.body)
+  return res.json()
 }
 
 const flush = async (rounds = 10) => {
@@ -426,6 +460,164 @@ test('boot prunes settled sessions older than maxSessionDays (bounded file growt
     assert.equal(ids.has('settled-recent'), true, 'recent settled rows survive')
     assert.equal(ids.has('waiting-old'), true, 'a waiting row is never pruned (not terminal)')
     assert.equal((await getState(harness)).snapshot.running?.status, 'waiting')
+    await dispose()
+  })
+})
+
+test('waiting observation is pass-through and surfaces in /context', async () => {
+  await withClock(async () => {
+    const session = makeSession('session-a')
+    const agent = createFakeAgent(session)
+    const harnessWithAgent = createHarness(createStore(), { agents: [agent] })
+    const dispose = apply(harnessWithAgent.ctx, CONFIG)
+    await flush(15)
+
+    assert.equal(agent.handlers.has('user-questions/request'), true)
+    assert.equal(agent.handlers.has('approval/request'), true)
+    assert.equal((await getContext(harnessWithAgent)).agent.waiting.active, false)
+
+    const request = { questions: [{ id: 'q1', question: 'pick one' }], agent }
+    const answer = { answers: [{ id: 'q1', selected: ['yes'] }] }
+    let nextCalls = 0
+    const pending = agent.handlers.get('user-questions/request')(request, async () => {
+      nextCalls += 1
+      return answer
+    })
+    const during = (await getContext(harnessWithAgent)).agent.waiting
+    assert.equal(during.active, true)
+    assert.equal(during.count, 1)
+    assert.equal(during.list[0].kind, 'question')
+    assert.equal(during.list[0].sessionId, 'session-a')
+    assert.equal(during.list[0].cwdName, 'project')
+
+    const result = await pending
+    assert.deepEqual(result, answer)
+    assert.equal(nextCalls, 1)
+    assert.equal((await getContext(harnessWithAgent)).agent.waiting.active, false)
+    assert.equal(request.questions.length, 1, 'request is never mutated')
+    await dispose()
+  })
+})
+
+test('approval waits are folded from waterfall and session audit events, then cleared', async () => {
+  await withClock(async () => {
+    const agent = createFakeAgent(makeSession('session-b'))
+    const harness = createHarness(createStore(), { agents: [agent] })
+    const dispose = apply(harness.ctx, CONFIG)
+    await flush(15)
+    const session = agent.session
+
+    // durable audit pair (also covers a plugin that loaded mid-request)
+    harness.emit('session/event', session, { type: 'approval/asked', data: { toolName: 'bash' } })
+    let waiting = (await getContext(harness)).agent.waiting
+    assert.equal(waiting.active, true)
+    assert.equal(waiting.list[0].kind, 'approval')
+    assert.equal(waiting.list[0].toolName, 'bash')
+    harness.emit('session/event', session, { type: 'approval/decided', data: { outcome: 'allowed-once' } })
+    assert.equal((await getContext(harness)).agent.waiting.active, false)
+
+    // waterfall path, including a rejecting next() that must still clear the wait
+    const handler = agent.handlers.get('approval/request')
+    const pending = handler({ toolName: 'run_code', agent }, async () => { throw new Error('denied') })
+    assert.equal((await getContext(harness)).agent.waiting.active, true)
+    await assert.rejects(pending, /denied/)
+    assert.equal((await getContext(harness)).agent.waiting.active, false)
+
+    // agent disposal clears any in-flight wait
+    const inFlight = handler({ toolName: 'run_code', agent }, async () => new Promise(() => {}))
+    assert.equal((await getContext(harness)).agent.waiting.active, true)
+    harness.emit('agent/disposed', { agent })
+    assert.equal((await getContext(harness)).agent.waiting.active, false)
+    void inFlight
+    await dispose()
+  })
+})
+
+test('subagent sessions and non-root agents are not observed', async () => {
+  await withClock(async () => {
+    const sub = createFakeAgent(makeSession('session-sub', { origin: 'subagent', delegationDepth: 1 }))
+    const harness = createHarness(createStore(), { agents: [sub] })
+    const dispose = apply(harness.ctx, CONFIG)
+    await flush(15)
+    assert.equal(sub.handlers.size, 0)
+    assert.equal((await getContext(harness)).agent.waiting.active, false)
+    await dispose()
+  })
+})
+
+test('multiple waiting sessions are sorted newest-first with a count', async () => {
+  await withClock(async (clock) => {
+    const a = createFakeAgent(makeSession('session-old'))
+    const b = createFakeAgent(makeSession('session-new'))
+    const harness = createHarness(createStore(), { agents: [a, b] })
+    const dispose = apply(harness.ctx, CONFIG)
+    await flush(15)
+
+    const startWait = (agent, kind) => agent.handlers.get('user-questions/request')(
+      { questions: [{ id: 'q', question: '?' }], agent },
+      async () => new Promise(() => {}),
+    )
+    void startWait(a, 'question')
+    clock.now += 5_000
+    void startWait(b, 'question')
+    const waiting = (await getContext(harness)).agent.waiting
+    assert.equal(waiting.count, 2)
+    assert.equal(waiting.list[0].sessionId, 'session-new')
+    assert.equal(waiting.list[1].sessionId, 'session-old')
+    await dispose()
+  })
+})
+
+test('approval waterfall overlaps the durable audit pair without stale waits', async () => {
+  await withClock(async () => {
+    const agent = createFakeAgent(makeSession('session-overlap'))
+    const harness = createHarness(createStore()) // no agents at boot: exercises agent/created install
+    const dispose = apply(harness.ctx, CONFIG)
+    await flush(15)
+    assert.equal(agent.handlers.size, 0)
+
+    harness.emit('agent/created', { agent })
+    assert.equal(agent.handlers.has('approval/request'), true)
+    const handler = agent.handlers.get('approval/request')
+
+    let release
+    const pending = handler({ toolName: 'bash', agent }, () => new Promise((resolve) => { release = resolve }))
+    harness.emit('session/event', agent.session, { type: 'approval/asked', data: { toolName: 'bash' } })
+    harness.emit('session/event', agent.session, { type: 'approval/decided', data: { outcome: 'allowed-once' } })
+    let waiting = (await getContext(harness)).agent.waiting
+    assert.equal(waiting.active, true, 'waterfall ref still holds the wait')
+    assert.equal((await getContext(harness)).agent.today.approvals, 1)
+
+    release('allowed-once')
+    await pending
+    assert.equal((await getContext(harness)).agent.waiting.active, false)
+
+    // a session disposal clears an in-flight wait
+    void handler({ toolName: 'bash', agent }, () => new Promise(() => {}))
+    assert.equal((await getContext(harness)).agent.waiting.active, true)
+    harness.emit('session/disposed', agent.session)
+    assert.equal((await getContext(harness)).agent.waiting.active, false)
+    await dispose()
+  })
+})
+
+test('agent_summary stays model-facing and never includes waiting observation state', async () => {
+  await withClock(async () => {
+    const agent = createFakeAgent(makeSession('session-summary'))
+    const harness = createHarness(createStore(), { agents: [agent] })
+    const dispose = apply(harness.ctx, CONFIG)
+    await flush(15)
+    void agent.handlers.get('approval/request')({ toolName: 'bash', agent }, () => new Promise(() => {}))
+    assert.equal((await getContext(harness)).agent.waiting.active, true)
+
+    const tool = [...harness.routes.values()].find((candidate) => candidate?.name === 'pomodoro_pet')
+    assert.ok(tool)
+    const result = await tool.execute({ action: 'agent_summary' }, { signal: new AbortController().signal })
+    assert.equal(result.ok, true)
+    assert.equal('waiting' in result.agent, false)
+    assert.equal('questions' in result.agent.today, false)
+    assert.equal('approvals' in result.agent.today, false)
+    assert.deepEqual(Object.keys(result.agent.today).sort(), ['steps', 'tools'])
     await dispose()
   })
 })

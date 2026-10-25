@@ -30,6 +30,8 @@ window.__ModuleLoader__.load({
      * 词典 key = 中文原文；未命中时原样返回（不会退化成 key）。
      */
     const NS = 'pomodoro.pet'
+    /** Set by apply(): opens a DSH session in the main panel (uiWorkspace). */
+    let openAgentSession = () => {}
     const i18nStore = { dict: null, locale: 'zh', rev: 0, listeners: new Set() }
 
     /** 载入词典并接上 ctx.locale（apply 里调用）。 */
@@ -400,6 +402,21 @@ window.__ModuleLoader__.load({
       "会话 {id}": "Session {id}",
       "{cwd} 会话": "Session in {cwd}",
       "Lv.{lv} {stage} · 番茄精灵": "Lv.{lv} {stage} · Pomodoro Pet",
+      // Agent waiting alerts (read-only observation)
+      "Agent 在等你": "Agent needs you",
+      "Agent 在等你确认": "Agent is waiting for your confirmation",
+      "Agent 有问题等你回答": "Agent has a question for you",
+      "等待确认": "Waiting for confirmation",
+      "等待回答": "Waiting for an answer",
+      "打开会话": "Open session",
+      "忽略": "Dismiss",
+      "还有 {n} 个等待": "{n} more waiting",
+      "番茄精灵 · Agent 等待": "Pomodoro Pet · Agent waiting",
+      "Agent 需要你确认才能继续": "The agent needs your confirmation to continue",
+      "等待提醒": "Waiting alert",
+      "Agent 等你确认时，在页面顶部闪烁提示": "Flash a banner when the agent waits for you",
+      "Agent 等待桌面通知": "Desktop alert for agent waiting",
+      "Agent 等你确认时发系统通知（浏览器需授权）": "Send a system notification when the agent waits (browser permission required)",
     }
     // <<< i18n:EN_TEXT
     /** 中文词典（自映射，供 ctx.locale 的中文查找链完整）。 */
@@ -930,6 +947,22 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
 .pp-agent-thought{position:absolute;top:6px;right:26px;font-size:11px;letter-spacing:2px;color:#5b76d6;opacity:.9;animation:pp-agent-think 1.6s ease-in-out infinite}
 .pp-agent-thought.pill{position:absolute;right:6px;top:2px;font-size:10px;letter-spacing:1px}
 @keyframes pp-agent-think{0%,100%{transform:translateY(0);opacity:.55}50%{transform:translateY(-2px);opacity:1}}
+/* ---- v0.10 Agent waiting alerts (read-only observation) ---- */
+.pp-wait-alert{position:fixed;top:var(--dsh-frame-overlay-top,40px);left:50%;transform:translateX(-50%);z-index:1100;pointer-events:auto;display:flex;align-items:center;gap:8px;max-width:min(92vw,560px);padding:8px 8px 8px 12px;border-radius:14px;border:1.5px solid #e67e22;background:#fff6e8;color:#8a4b0f;box-shadow:0 10px 32px rgba(230,126,34,.28);font-family:${FONT};animation:pp-wait-flash 1.4s ease-in-out infinite}
+.pp-wait-main{display:flex;align-items:center;gap:8px;flex:1;min-width:0;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:3px 4px;text-align:left}
+.pp-wait-icon{font-size:15px;flex-shrink:0}
+.pp-wait-text{font-size:12.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pp-wait-more{font-size:11px;opacity:.8;flex-shrink:0}
+.pp-wait-x{border:0;background:transparent;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:2px 7px;border-radius:8px;opacity:.7}
+.pp-wait-x:hover{opacity:1;background:rgba(230,126,34,.14)}
+@keyframes pp-wait-flash{0%,100%{box-shadow:0 10px 32px rgba(230,126,34,.22);border-color:#e67e22}50%{box-shadow:0 10px 42px rgba(230,126,34,.55),0 0 0 4px rgba(230,126,34,.16);border-color:#f39c12}}
+:root[data-pp-theme="dark"] .pp-wait-alert{background:#3a2a16;color:#ffd59a;border-color:#b86e1f}
+.pp-ctag-wait{border-color:#f0b45a;background:#fff6e8;color:#8a4b0f;cursor:pointer;font:inherit}
+:root[data-pp-theme="dark"] .pp-ctag-wait{background:#3a2a16;color:#ffd59a;border-color:#7a4a17}
+.pp-wait-card{padding:14px 18px}
+.pp-wait-list{display:grid;gap:8px}
+.pp-wait-row{display:flex;align-items:center;gap:10px;min-width:0}
+.pp-wait-rowtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--pp-ink)}
 /* ---- v0.8.3 Agent 卡片（按会话 / 工作区技能） ---- */
 .pp-agentgrid{display:grid;grid-template-columns:1.25fr .78fr;gap:18px;margin-top:18px;align-items:start}
 .pp-agentgrid.single{grid-template-columns:1fr}
@@ -1102,9 +1135,9 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
   .pp-range{width:110px}
 }
 @media(prefers-reduced-motion:reduce){
-  .pp-app *,.pp-pet-host *{animation:none!important;transition:none!important}
+  .pp-app *,.pp-pet-host *,.pp-wait-alert,.pp-wait-alert *{animation:none!important;transition:none!important}
 }
-[data-pp-anim="off"] .pp-app *,[data-pp-anim="off"] .pp-pet-host *{
+[data-pp-anim="off"] .pp-app *,[data-pp-anim="off"] .pp-pet-host *,[data-pp-anim="off"] .pp-wait-alert,[data-pp-anim="off"] .pp-wait-alert *{
   animation:none!important;transition:none!important
 }
 `
@@ -1143,6 +1176,24 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       }[kind]
       if (!body) return
       try { new Notification('番茄钟宠物', { body, tag: `pomodoro-${kind}` }) } catch { /* notification API unavailable */ }
+    }
+
+    /** Desktop notification for a session that started waiting for the user. */
+    function notifyWaiting(entry) {
+      if (!entry || !entry.sessionId) return
+      try {
+        if (prefsStore.value.waitNotify === false) return
+        if (snapshotStore.snap?.settings?.notificationEnabled === false) return
+        if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+        const title = tr('番茄精灵 · Agent 等待')
+        const body = entry.kind === 'approval' ? tr('Agent 需要你确认才能继续') : tr('Agent 有问题等你回答')
+        const n = new Notification(title, { body, tag: `pp-wait-${entry.sessionId}` })
+        n.onclick = () => {
+          try { window.focus() } catch { /* window unavailable */ }
+          openAgentSession(entry.sessionId)
+          try { n.close() } catch { /* already closed */ }
+        }
+      } catch { /* notifications unavailable */ }
     }
 
     /* ---------------- audio: WebAudio chimes, zero assets (§14) -------- */
@@ -1496,9 +1547,15 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         && (next.session?.cwd ?? null) === (prev.session?.cwd ?? null)) {
         next.skills = prev.skills
       }
+      const prevWaiting = new Set((prev?.agent?.waiting?.list ?? []).map(entry => `${entry.sessionId}:${entry.since}`))
       agentCtxStore.ctx = next
-      // hidden 时只存不渲染：agent 帧最高 ~1.25/s，隐藏标签页没必要为它重建 UI。
-      // 回到可见时 manageEventsByVisibility 会 notifyAgentCtx() 补一次。
+      // New waiting sessions must notify even when the tab is hidden; the React
+      // listeners are skipped while hidden and caught up on visibility. The first
+      // hydration is silent (the banner still renders) so a page reload doesn't
+      // re-fire notifications for waits that were already visible.
+      if (prev) for (const entry of next.agent?.waiting?.list ?? []) {
+        if (!prevWaiting.has(`${entry.sessionId}:${entry.since}`)) notifyWaiting(entry)
+      }
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       notifyAgentCtx()
     }
@@ -1534,18 +1591,22 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
     }
 
     /** 本地展示偏好（设备级 localStorage, 与主题一致不走 Host 设置）。 */
-    const PREF_DEFAULTS = { showAgent: true, showContext: true }
+    const PREF_DEFAULTS = { showAgent: true, showContext: true, waitAlert: true, waitNotify: true }
+    const PREF_KEYS = {
+      showAgent: 'pp-show-agent', showContext: 'pp-show-context',
+      waitAlert: 'pp-wait-alert', waitNotify: 'pp-wait-notify',
+    }
     const readPrefs = () => {
       const read = (key, dflt) => {
         try { const v = localStorage.getItem(key); return v == null ? dflt : v === '1' } catch { return dflt }
       }
-      return { showAgent: read('pp-show-agent', PREF_DEFAULTS.showAgent), showContext: read('pp-show-context', PREF_DEFAULTS.showContext) }
+      return Object.fromEntries(Object.entries(PREF_DEFAULTS).map(([name, dflt]) => [name, read(PREF_KEYS[name], dflt)]))
     }
     const prefsStore = { value: readPrefs(), listeners: new Set() }
     function setPref(name, on) {
       if (!(name in prefsStore.value)) return
       prefsStore.value = { ...prefsStore.value, [name]: !!on }
-      try { localStorage.setItem(name === 'showAgent' ? 'pp-show-agent' : 'pp-show-context', on ? '1' : '0') } catch { /* private mode */ }
+      try { localStorage.setItem(PREF_KEYS[name], on ? '1' : '0') } catch { /* private mode */ }
       for (const fn of [...prefsStore.listeners]) fn(prefsStore.value)
     }
     function usePrefs() {
@@ -1573,16 +1634,25 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
     function ContextBar({ context, showContext, showAgent }) {
       const session = context?.session
       const agent = context?.agent
-      const hasAgent = showAgent && agent && (agent.running || (agent.today?.tools ?? 0) > 0)
+      const waiting = agent?.waiting
+      const hasAgent = showAgent && agent && (agent.running || (agent.today?.tools ?? 0) > 0 || waiting?.active)
       if (!session && !hasAgent) return null
       const label = session?.label
         ? raw(session.label)
         : (session?.id ? trRaw('会话 {id}', { id: String(session.id).slice(0, 8) }) : null)
+      const topWait = waiting?.list?.[0] ?? null
       return h('div', { className: 'pp-context', 'aria-label': '工作上下文' },
         showContext && session?.cwdName && h('span', { className: 'pp-ctag', title: raw(session.cwd ?? '') },
           h('span', { 'aria-hidden': true }, '📁'), raw(session.cwdName)),
         showContext && label && h('span', { className: 'pp-ctag pp-ctag-session', title: '最近活跃会话（启发式）' },
           h('span', { 'aria-hidden': true }, '💬'), label),
+        waiting?.active && h('button', {
+          type: 'button', className: 'pp-ctag pp-ctag-wait',
+          title: topWait ? raw(topWait.label ?? topWait.cwdName ?? '') : '',
+          onClick: () => openAgentSession(topWait?.sessionId),
+        },
+          h('span', { 'aria-hidden': true }, '⏳'), tr('Agent 在等你'),
+          waiting.count > 1 && h('span', { className: 'pp-ctag-sub' }, `+${waiting.count - 1}`)),
         hasAgent && h('span', {
           className: `pp-ctag pp-ctag-agent${agent.running ? ' on' : ''}`,
           title: 'DSH Agent 当前活动',
@@ -1591,6 +1661,58 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
           agent.running ? 'Agent 运行中' : 'AI 空闲',
           h('span', { className: 'pp-ctag-sub' }, `今日 ${agent.today?.tools ?? 0} 工具`)),
       )
+    }
+
+    /** Global flashing banner for sessions waiting on user input/approval. */
+    function WaitingAlert() {
+      ensureStyles()
+      const agentCtx = useAgentContext()
+      const prefs = usePrefs()
+      const [dismissed, setDismissed] = React.useState(() => new Set())
+      const waiting = agentCtx?.agent?.waiting
+      const list = (waiting?.list ?? []).filter(entry => !dismissed.has(`${entry.sessionId}:${entry.since}`))
+      React.useEffect(() => {
+        setDismissed((prev) => {
+          const alive = new Set((waiting?.list ?? []).map(entry => `${entry.sessionId}:${entry.since}`))
+          const next = new Set([...prev].filter(key => alive.has(key)))
+          return next.size === prev.size ? prev : next
+        })
+      }, [waiting?.list])
+      if (!prefs.waitAlert || !list.length) return null
+      const top = list[0]
+      const more = list.length - 1
+      const kindText = top.kind === 'approval' ? tr('Agent 在等你确认') : tr('Agent 有问题等你回答')
+      const name = top.label || top.cwdName || tr('未命名会话')
+      return h('div', { className: 'pp-wait-alert', role: 'alert', 'aria-live': 'assertive' },
+        h('button', {
+          type: 'button', className: 'pp-wait-main', title: tr('打开会话'),
+          onClick: () => openAgentSession(top.sessionId),
+        },
+          h('span', { className: 'pp-wait-icon', 'aria-hidden': true }, '⏳'),
+          h('span', { className: 'pp-wait-text' }, kindText, ' · ', raw(name)),
+          more > 0 && h('span', { className: 'pp-wait-more' }, trf('还有 {n} 个等待', { n: more }))),
+        h('button', {
+          type: 'button', className: 'pp-wait-x', 'aria-label': tr('忽略'),
+          onClick: () => setDismissed(prev => new Set(prev).add(`${top.sessionId}:${top.since}`)),
+        }, '×'))
+    }
+
+    /** Compact "needs you" card in the Focus tab, newest first (max 3). */
+    function AgentWaitCard({ agentCtx }) {
+      const waiting = agentCtx?.agent?.waiting
+      const list = (waiting?.list ?? []).slice(0, 3)
+      if (!list.length) return null
+      return h('article', { className: 'pp-card pp-wait-card' },
+        h('div', { className: 'pp-cardhead' }, h('h2', null, '⏳　', tr('Agent 在等你'))),
+        h('div', { className: 'pp-wait-list' },
+          list.map(entry => h('div', { key: `${entry.sessionId}:${entry.since}`, className: 'pp-wait-row' },
+            h('span', { className: 'pp-wait-rowtext' },
+              entry.kind === 'approval' ? tr('等待确认') : tr('等待回答'), ' · ',
+              raw(entry.label || entry.cwdName || tr('未命名会话'))),
+            h('button', {
+              type: 'button', className: 'pp-sbtn',
+              onClick: () => openAgentSession(entry.sessionId),
+            }, tr('打开会话'))))))
     }
 
     /** Live remaining ms, interpolated with the serverNow offset (§11.2). */
@@ -2560,6 +2682,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       })
 
       return h('div', null,
+        agentCtx?.agent?.waiting?.active && h(AgentWaitCard, { agentCtx }),
         h('div', { className: 'pp-grid' },
         // 左列: 计时卡 + 今日进度
         h('section', { className: 'pp-col' },
@@ -3763,6 +3886,21 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
               type: 'button', role: 'switch', 'aria-checked': prefs.showContext, 'aria-label': '会话与工作区',
               className: 'pp-switch', onClick: () => setPref('showContext', !prefs.showContext),
             }, h('span', { 'aria-hidden': true }))),
+          row('等待提醒', 'Agent 等你确认时，在页面顶部闪烁提示',
+            h('button', {
+              type: 'button', role: 'switch', 'aria-checked': prefs.waitAlert, 'aria-label': '等待提醒',
+              className: 'pp-switch', onClick: () => setPref('waitAlert', !prefs.waitAlert),
+            }, h('span', { 'aria-hidden': true }))),
+          row('Agent 等待桌面通知', 'Agent 等你确认时发系统通知（浏览器需授权）',
+            h('button', {
+              type: 'button', role: 'switch', 'aria-checked': prefs.waitNotify, 'aria-label': 'Agent 等待桌面通知',
+              className: 'pp-switch',
+              onClick: () => {
+                const next = !prefs.waitNotify
+                setPref('waitNotify', next)
+                if (next) void ensureNotifyPermission().then(setNotifyState)
+              },
+            }, h('span', { 'aria-hidden': true }))),
           row('数据来源', 'DSH 会话事件 + 工具调用事件，仅在本机展示，不上传、不写入导出',
             h('span', { className: 'pp-sstatus muted' }, '本地')),
         ]),
@@ -3800,7 +3938,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
             h('span', { style: { fontWeight: 600, color: entry.result === 'ok' ? '#328b50' : '#df4e42', flexShrink: 0 } }, entry.toolAction),
             h('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, entry.result)))),
         card('关于', 'ℹ️', [
-          row('版本', '番茄精灵 · DSH 插件', h('span', { className: 'pp-sstatus muted', style: { fontVariantNumeric: 'tabular-nums' } }, '0.9.5')),
+          row('版本', '番茄精灵 · DSH 插件', h('span', { className: 'pp-sstatus muted', style: { fontVariantNumeric: 'tabular-nums' } }, '0.10.0')),
         ]))
 
       return h('div', { className: 'pp-settings' },
@@ -3820,6 +3958,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
      * 且语言切换时随 useLocaleRev() 自动重渲染。 */
     const PomodoroPanelI18n = withI18n((props) => h(PomodoroPanel, props))
     const PetOverlayI18n = withI18n((props) => h(PetOverlay, props))
+    const WaitingAlertI18n = withI18n((props) => h(WaitingAlert, props))
 
     /* ---- 测试导出（SSR 冒烟用；不影响运行） ---- */
     const StatsTabI18n = withI18n((props) => h(StatsTab, props))
@@ -3842,6 +3981,15 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       apply(ctx) {
         // v0.9: 先装运行时（拿到当前语言），再按语言注册官方词典（供设置页语言列表）
         installLocale(ctx)
+        // Read-only navigation for waiting alerts; unavailable in non-workspace shells.
+        try {
+          ctx.inject(['uiWorkspace'], (scope) => {
+            openAgentSession = (sessionId) => {
+              if (!sessionId) return
+              try { scope.uiWorkspace.openSession(sessionId) } catch { /* navigation unavailable */ }
+            }
+          })
+        } catch { /* optional service */ }
         let localeOk = 'skipped'
         try {
           // 挂在 effect 上：fiber 销毁（HMR 重载）时自动注销字典，
@@ -3860,6 +4008,12 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
           }, PetOverlayI18n))
           console.log('pomodoro-pet[client]: shell.overlay registered')
         } catch (error) { console.error('pomodoro-pet[client]: shell.overlay FAILED', error) }
+        try {
+          ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+            name: 'shell.overlay', id: 'pomodoro-pet-wait', order: 210,
+          }, WaitingAlertI18n))
+          console.log('pomodoro-pet[client]: waiting alert overlay registered')
+        } catch (error) { console.error('pomodoro-pet[client]: waiting alert overlay FAILED', error) }
         try {
           ctx.slots.inject('main', () => ctx.slots.register({
             name: 'main', key: 'pomodoro-pet', locale: 'pomodoro.pet',

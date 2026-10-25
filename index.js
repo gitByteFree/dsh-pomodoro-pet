@@ -521,17 +521,26 @@ export function apply(ctx, config) {
 
   /* ---- throttled `agent` SSE frame ---- */
   let agentFrameTimer = null
-  const scheduleAgentFrame = () => {
+  const sendAgentFrame = async () => {
+    if (sseClients.size === 0) return
+    let data
+    try { data = await buildContext() } catch { return }
+    const frame = `event: agent\ndata: ${JSON.stringify(data)}\n\n`
+    for (const res of [...sseClients]) {
+      try { res.write(frame) } catch { sseClients.delete(res) }
+    }
+  }
+  /** Throttled for tool chatter; waiting-state changes bypass the 800ms delay. */
+  const scheduleAgentFrame = (immediate = false) => {
+    if (immediate) {
+      if (agentFrameTimer) { clearTimeout(agentFrameTimer); agentFrameTimer = null }
+      void sendAgentFrame()
+      return
+    }
     if (agentFrameTimer) return
-    agentFrameTimer = setTimeout(async () => {
+    agentFrameTimer = setTimeout(() => {
       agentFrameTimer = null
-      if (sseClients.size === 0) return
-      let data
-      try { data = await buildContext() } catch { return }
-      const frame = `event: agent\ndata: ${JSON.stringify(data)}\n\n`
-      for (const res of [...sseClients]) {
-        try { res.write(frame) } catch { sseClients.delete(res) }
-      }
+      void sendAgentFrame()
     }, 800)
     agentFrameTimer.unref?.()
   }
@@ -555,12 +564,62 @@ export function apply(ctx, config) {
     if (!dirty) return
     void serialize(async () => {
       const env = await withEngine()
-      await env.settingsTable.put(`_agent_${dirty.day}`, { value: { tools: dirty.tools, steps: dirty.steps, updatedAt: now() } })
+      await env.settingsTable.put(`_agent_${dirty.day}`, {
+        value: {
+          tools: dirty.tools, steps: dirty.steps,
+          questions: dirty.questions ?? 0, approvals: dirty.approvals ?? 0, waitMs: dirty.waitMs ?? 0,
+          updatedAt: now(),
+        },
+      })
       await pruneAgentKeys(env)
     }).catch(() => { /* counters are best-effort */ })
   }
   agentFlushTimer = setInterval(flushAgentCounters, 5000)
   agentFlushTimer.unref?.()
+
+  /* ---- read-only waiting observation (never changes Agent flow) ---- */
+  const agentWatches = new Map()
+  const wrapWaiting = (kind, session) => async (request, next) => {
+    // Observation only: call next() exactly once, return its value unchanged.
+    // Guard the global-ctx fallback: an unscoped request has no agent, and a
+    // scoped request for a different agent must never create a phantom wait.
+    const requestSession = request?.agent?.session ?? request?.agent
+    if (requestSession?.id !== session.id) return next()
+    try { bridge.beginWait(session, kind, { toolName: request?.toolName }) } catch { /* observation */ }
+    try {
+      return await next()
+    } finally {
+      try { bridge.endWait(session, kind) } catch { /* observation */ }
+    }
+  }
+  const installAgentWatch = (agent) => {
+    try {
+      const session = agent?.session
+      if (!session || !isRootSession(session) || !session.id) return
+      if (agentWatches.has(session.id)) return
+      // Prefer the agent-scoped context; fall back to the global channel.
+      const target = (agent.ctx && typeof agent.ctx.on === 'function') ? agent.ctx : ctx
+      const offs = []
+      for (const [event, kind] of [['user-questions/request', 'question'], ['approval/request', 'approval']]) {
+        // Prepend so the read-only observer runs before an answerer that may
+        // claim the waterfall without calling next(); it still just delegates.
+        try { offs.push(target.on(event, wrapWaiting(kind, session), { prepend: true })) } catch { /* event unavailable */ }
+      }
+      agentWatches.set(session.id, () => {
+        for (const off of offs) { try { off?.() } catch { /* already gone */ } }
+      })
+    } catch { /* observation is optional */ }
+  }
+  const removeAgentWatch = (agentOrSession) => {
+    try {
+      const session = typeof agentOrSession === 'string' ? null : (agentOrSession?.session ?? agentOrSession)
+      const id = typeof agentOrSession === 'string' ? agentOrSession : (session?.id ?? agentOrSession?.id)
+      if (!id) return
+      agentWatches.get(id)?.()
+      agentWatches.delete(id)
+      bridge.clearSession(id)
+    } catch { /* observation is optional */ }
+  }
 
   /* ---- listeners: session / agent / tool activity ---- */
   ctx.effect(() => {
@@ -571,9 +630,13 @@ export function apply(ctx, config) {
     on('session/event', (session, event) => bridge.onSessionEvent(session, event))
     on('agent/status', (payload) => bridge.onAgentStatus(payload))
     on('tools/result', (exec, result) => bridge.onToolResult(exec, result))
-    const offChange = bridge.onChange(() => scheduleAgentFrame())
+    on('agent/created', ({ agent }) => installAgentWatch(agent))
+    on('agent/disposed', ({ agent }) => removeAgentWatch(agent))
+    on('session/disposed', (session) => removeAgentWatch(session))
+    const offChange = bridge.onChange((reason) => scheduleAgentFrame(reason === 'waiting'))
     return () => {
       offChange?.()
+      for (const id of [...agentWatches.keys()]) removeAgentWatch(id)
       for (const off of offs) { try { off?.() } catch { /* already gone */ } }
       bridge.dispose()
     }
@@ -584,7 +647,9 @@ export function apply(ctx, config) {
     try {
       // 启动即给 bridge 播一个当前会话（取最新创建的 root 会话），
       // 这样重启后即使还没有新的用户消息，番茄也能归属到正确会话。
-      const roots = optionalService('agents')?.roots?.() ?? []
+      const agentsSvc = optionalService('agents')
+      for (const agent of agentsSvc?.list?.() ?? []) installAgentWatch(agent)
+      const roots = agentsSvc?.roots?.() ?? []
       const live = roots
         .map(agent => agent?.session)
         .filter(Boolean)
@@ -1499,12 +1564,23 @@ export function apply(ctx, config) {
           const withAgent = focusRows.filter(s => (s.agentToolCount ?? 0) > 0)
           const focusTools = focusRows.reduce((n, s) => n + (s.agentToolCount ?? 0), 0)
           const last = agentSnap.agent.lastTools.slice(0, 5).map(t => `${t.name}${t.ok ? '' : '(失败)'}`).join(', ')
+          // The waiting list and new daily counters are browser-only observation
+          // state; never widen this model-facing tool result with them.
+          const agentToday = {
+            tools: agentSnap.agent.today.tools,
+            steps: agentSnap.agent.today.steps,
+          }
           return {
             ok: true,
-            summary: `今日 Agent 工具 ${agentSnap.agent.today.tools} 次/步骤 ${agentSnap.agent.today.steps} 个;` +
+            summary: `今日 Agent 工具 ${agentToday.tools} 次/步骤 ${agentToday.steps} 个;` +
               `近 ${days} 天有 ${withAgent.length}/${focusRows.length} 个番茄与 Agent 并行,期间工具 ${focusTools} 次;` +
               `最近工具:${last || '无'}`,
-            agent: agentSnap.agent,
+            agent: {
+              running: agentSnap.agent.running,
+              runningTools: agentSnap.agent.runningTools,
+              lastTools: agentSnap.agent.lastTools,
+              today: agentToday,
+            },
             session: agentSnap.session,
             focus: { sessions: focusRows.length, withAgentSessions: withAgent.length, toolsDuringFocus: focusTools },
           }
@@ -1530,6 +1606,6 @@ export function apply(ctx, config) {
 
 /* Re-export engine bits used above (hoisted import; ESM allows bottom imports). */
 import { START, PAUSE, RESUME, STOP, TICK_EXPIRE, SET_TASK, SET_MODE, REDEEM_OUTFIT, TASK_CREATE, TASK_UPDATE, TASK_DELETE, GROUP_CREATE, GROUP_UPDATE, GROUP_DELETE, transition, snapshotOf, dayOf, DEFAULT_SETTINGS } from './pet-engine.js'
-import { createAgentBridge, basenameOf, sanitizeSessionLabel } from './agent-bridge.js'
+import { createAgentBridge, basenameOf, sanitizeSessionLabel, isRootSession } from './agent-bridge.js'
 import { ACHIEVEMENTS } from './achievement-engine.js'
 import { heatmap, trend, quadrantDist, hourDist, weeklyReport, monthlyReport } from './stats-engine.js'

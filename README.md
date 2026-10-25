@@ -4,7 +4,7 @@ A focus companion for DSH Web / Desktop: a pomodoro timer, four-quadrant tasks, 
 
 ![Pomodoro Pet focus panel](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/focus-panel.png)
 
-**Version 0.9.5** · Requires DSH Web / Desktop `0.2.1-rc.2`+ · Zero npm dependencies · Data stays on your machine
+**Version 0.10.0** · Requires DSH Web / Desktop `0.2.1-rc.2`+ · Zero npm dependencies · Data stays on your machine
 
 **English** | [中文](README.zh.md)
 
@@ -69,6 +69,12 @@ The plugin exposes a `pomodoro_pet` tool to the agent:
 - **Propose** new tasks or edits — nothing is written until you confirm in the UI
 - Build a read-only focus plan from the current session, tasks, and available skills
 
+The pet is also a read-only status board for DSH sessions:
+
+- When another session is waiting for your **approval** or **answer**, a flashing banner appears on top of the page (plus a panel chip, a "needs you" card, and an optional desktop notification)
+- Click the banner/chip/card/notification to jump straight to that session
+- This is observation only: the plugin never answers for you, never changes the agent's prompt, tools, or workflow, and never writes to a session
+
 Just ask in a DSH conversation:
 
 - "Start a 25-minute focus round"
@@ -80,6 +86,7 @@ Just ask in a DSH conversation:
 - No uploads, no telemetry, no remote calls
 - Session names, workspace paths, and task titles are shown locally only; task titles are hidden by default
 - Agent context never appears in exported files
+- Waiting alerts are observed locally from DSH session/approval events and only rendered in this browser; they are never sent to the model and cannot change an agent's behaviour
 - Data lives in `$DSH_HOME/storages/pomodoro_pet/` (one JSON document per record); copy that folder to migrate. Upgrading from 0.9.4 or earlier migrates the old single `pomodoro_pet.json` automatically on first start and keeps it as a backup
 
 ## Installation
@@ -126,7 +133,7 @@ dsh plugin --profile desktop add dsh-pomodoro-pet
 ### Option 3: One-click script
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.5.tar.gz
+tar -xzf dsh-pomodoro-pet-0.10.0.tar.gz
 cd dsh-pomodoro-pet
 ./install.sh                # installs to ~/dsh-plugins, profile "web"
 ```
@@ -185,7 +192,7 @@ In the GUI you should see:
 
 - 🍅 **Pomodoro Pet** in the sidebar
 - A draggable pet capsule in the bottom-right corner
-- Version `0.9.5` under Settings → About
+- Version `0.10.0` under Settings → About
 
 ## Quick start
 
@@ -247,7 +254,7 @@ Available while the panel is open:
 
   ```bash
   node --test
-  # 121 tests, all passing
+  # 129 tests, all passing
   ```
 
 ## License

@@ -185,6 +185,21 @@ export const EN_TEXT = {
   "会话 {id}": "Session {id}",
   "{cwd} 会话": "Session in {cwd}",
   "Lv.{lv} {stage} · 番茄精灵": "Lv.{lv} {stage} · Pomodoro Pet",
+  // Agent waiting alerts (read-only observation)
+  "Agent 在等你": "Agent needs you",
+  "Agent 在等你确认": "Agent is waiting for your confirmation",
+  "Agent 有问题等你回答": "Agent has a question for you",
+  "等待确认": "Waiting for confirmation",
+  "等待回答": "Waiting for an answer",
+  "打开会话": "Open session",
+  "忽略": "Dismiss",
+  "还有 {n} 个等待": "{n} more waiting",
+  "番茄精灵 · Agent 等待": "Pomodoro Pet · Agent waiting",
+  "Agent 需要你确认才能继续": "The agent needs your confirmation to continue",
+  "等待提醒": "Waiting alert",
+  "Agent 等你确认时，在页面顶部闪烁提示": "Flash a banner when the agent waits for you",
+  "Agent 等待桌面通知": "Desktop alert for agent waiting",
+  "Agent 等你确认时发系统通知（浏览器需授权）": "Send a system notification when the agent waits (browser permission required)",
 }
 
 /** PATTERNS: [正则, 替换] 用于插值成品（"6 / 8 个番茄"、"3 天"…）。 */

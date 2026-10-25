@@ -204,3 +204,55 @@ test('onChange listeners fire and dispose cleanly', () => {
   assert.equal(n, before)
   bridge.dispose()
 })
+
+test('waiting observation refcounts, clears on agent disposal, and ignores subagents', () => {
+  const c = clock()
+  const bridge = createAgentBridge({ now: c.now, dayOf: () => '2026-10-21' })
+  const session = rootSession('sess-wait', '/repo/wait')
+  const reasons = []
+  bridge.onChange((reason) => reasons.push(reason))
+
+  bridge.beginWait(session, 'approval', { toolName: 'bash' })
+  bridge.beginWait(session, 'approval', { toolName: 'bash' }) // waterfall + audit pair
+  assert.equal(bridge.snapshot().agent.waiting.active, true)
+  assert.equal(bridge.snapshot().agent.waiting.list.length, 1)
+  assert.equal(bridge.snapshot().agent.waiting.list[0].toolName, 'bash')
+  assert.equal(bridge.snapshot().agent.today.approvals, 1, 'refcounted, not double counted')
+  assert.equal(bridge.waiting().length, 1)
+
+  c.advance(2_000)
+  bridge.endWait(session, 'approval')
+  assert.equal(bridge.snapshot().agent.waiting.active, true)
+  bridge.endWait(session, 'approval')
+  const snap = bridge.snapshot()
+  assert.equal(snap.agent.waiting.active, false)
+  assert.equal(snap.agent.today.waitMs, 2_000)
+  assert.ok(reasons.includes('waiting'))
+
+  bridge.beginWait(session, 'question')
+  assert.equal(bridge.snapshot().agent.today.questions, 1)
+  bridge.clearSession(session)
+  assert.equal(bridge.snapshot().agent.waiting.active, false)
+
+  bridge.beginWait(subSession('sub-wait'), 'approval')
+  assert.equal(bridge.snapshot().agent.waiting.active, false)
+})
+
+test('loadBucket accepts legacy buckets without waiting counters', () => {
+  const bridge = createAgentBridge({ now: () => 1_700_000_000_000, dayOf: () => '2026-10-21' })
+  bridge.loadBucket('2026-10-21', { tools: 3, steps: 2 })
+  const today = bridge.snapshot().agent.today
+  assert.equal(today.tools, 3)
+  assert.equal(today.questions, 0)
+  assert.equal(today.approvals, 0)
+  assert.equal(today.waitMs, 0)
+
+  const session = rootSession('sess-bucket')
+  bridge.beginWait(session, 'question', {})
+  bridge.endWait(session, 'question')
+  bridge.onToolResult({ name: 'bash' }, { isError: false })
+  const dirty = bridge.takeDirty()
+  assert.equal(dirty.questions, 1)
+  assert.equal(dirty.tools, 4)
+  assert.equal(typeof dirty.waitMs, 'number')
+})

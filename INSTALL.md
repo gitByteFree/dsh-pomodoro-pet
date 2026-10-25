@@ -3,7 +3,7 @@
 一个 DSH（Web GUI / Desktop 桌面端）的番茄钟 + 桌面宠物插件：侧边栏面板（专注 / 统计 / 设置）、
 可拖动桌宠、成就与装扮、四象限任务、以及跟 DSH 会话 / Agent / 技能联动的功能。
 
-- 版本：**0.9.5**
+- 版本：**0.10.0**
 - 运行环境：**DSH Web 或 DSH Desktop**，`0.2.1-rc.2` 及以上
 - 依赖：**零 npm 依赖**（纯 ESM + 浏览器原生 React 注入），只需 DSH 本体
 - 语言：中文 / English（跟随 DSH「设置 → 通用 → 语言」）
@@ -42,7 +42,7 @@ dsh plugin add dsh-pomodoro-pet
 解压后进入目录，直接跑安装脚本（只用于 Web profile）：
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.5.tar.gz
+tar -xzf dsh-pomodoro-pet-0.10.0.tar.gz
 cd dsh-pomodoro-pet
 ./install.sh                 # 默认装到 ~/dsh-plugins，profile = web
 # 或指定：./install.sh --dest ~/my-plugins --profile web
@@ -207,14 +207,14 @@ curl -s http://127.0.0.1:3080/dsh-pomodoro/context | head -c 400
 GUI 侧应能看到（Web / Desktop 相同）：
 - 侧边栏出现 🍅 图标，点开是「专注时间」页
 - 右下角出现可拖动的桌宠胶囊
-- 设置页最下方「版本」显示 `0.9.5`
+- 设置页最下方「版本」显示 `0.10.0`
 
 ### 可选：跑单元测试
 
 ```bash
 cd ~/dsh-plugins/dsh-pomodoro-pet
 node --test
-# 期望：tests 121 / pass 121 / fail 0
+# 期望：tests 129 / pass 129 / fail 0
 ```
 
 ---
@@ -230,6 +230,7 @@ node --test
   建议拷贝前先关掉 DSH，避免写入竞争。
 - 设备级偏好（存在浏览器 `localStorage`，不随数据文件走，且**按页面 origin 隔离**）：
   - `pp-pet-pos` 桌宠位置、`pp-pet-collapsed` 收纳状态
+  - `pp-wait-alert` Agent 等待闪烁横幅、`pp-wait-notify` Agent 等待桌面通知
   - `pp-show-agent` / `pp-show-context` Agent 联动开关
   - `pp-seen-settlement` 结算弹窗去重
   - Web 的 origin 是 `http://127.0.0.1:<port>`，桌面端是 `dsh-app://app`——从 Web 换到桌面端时，

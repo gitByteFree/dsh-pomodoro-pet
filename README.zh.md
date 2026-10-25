@@ -4,7 +4,7 @@ DSH Web / Desktop 的专注小搭档：一个番茄钟、一套四象限任务�
 
 ![番茄精灵专注面板](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/focus-panel.png)
 
-**版本 0.9.5** · 需要 DSH Web / Desktop `0.2.1-rc.2` 及以上 · 零 npm 依赖 · 数据只存本机
+**版本 0.10.0** · 需要 DSH Web / Desktop `0.2.1-rc.2` 及以上 · 零 npm 依赖 · 数据只存本机
 
 [English](README.md) | **中文**
 
@@ -69,6 +69,12 @@ DSH Web / Desktop 的专注小搭档：一个番茄钟、一套四象限任务�
 - 让 Agent **提议**新建或修改任务——只有你在界面上确认后才会真正写入
 - 结合当前会话、任务和可用技能，生成一份只读的专注计划
 
+桌宠同时也是 DSH 会话的只读状态板：
+
+- 当其他会话正在等待你**确认**或**输入**时，页面顶部会出现闪烁横幅，同时有面板 chip、"需要你"卡片，并可选发桌面通知
+- 点击横幅 / chip / 卡片 / 通知，直接跳转到对应会话
+- 纯观察：不会替你回答、不改变 Agent 的 prompt / 工具 / 流程，也不会写入任何会话
+
 在 DSH 对话里直接说就行：
 
 - “开始一轮 25 分钟专注”
@@ -80,6 +86,7 @@ DSH Web / Desktop 的专注小搭档：一个番茄钟、一套四象限任务�
 - 不上传、无遥测、不发起远程请求
 - 会话名、工作区路径、任务标题只在本机展示，任务标题默认隐藏
 - Agent 上下文不会进入导出文件
+- 等待提醒只在本机从 DSH 会话 / 审批事件读取并渲染，不会发送给模型，也不会改变 Agent 行为
 - 数据保存在 `$DSH_HOME/storages/pomodoro_pet/`（每条记录一个 JSON 文档），拷走这个目录即可迁移；从 0.9.4 及更早版本升级时，旧的单文件 `pomodoro_pet.json` 会在首次启动自动迁移，并保留为备份
 
 ## 安装
@@ -126,7 +133,7 @@ dsh plugin --profile desktop add dsh-pomodoro-pet
 ### 方式三：一键脚本
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.5.tar.gz
+tar -xzf dsh-pomodoro-pet-0.10.0.tar.gz
 cd dsh-pomodoro-pet
 ./install.sh                # 默认装到 ~/dsh-plugins，profile 为 web
 ```
@@ -185,7 +192,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/stat
 
 - 侧边栏出现 🍅 **番茄精灵**
 - 右下角出现可拖动的桌宠胶囊
-- 设置 → 关于显示版本 `0.9.5`
+- 设置 → 关于显示版本 `0.10.0`
 
 ## 使用速览
 
@@ -247,7 +254,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/stat
 
   ```bash
   node --test
-  # 121 个测试全部通过
+  # 129 个测试全部通过
   ```
 
 ## 许可证

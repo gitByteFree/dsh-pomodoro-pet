@@ -2,7 +2,7 @@
 
 Technical details for developers and tool authors. User-facing docs: [README.md](README.md) / [README.zh.md](README.zh.md). Install walkthrough: [INSTALL.md](INSTALL.md).
 
-- Version: **0.9.5**
+- Version: **0.10.0**
 - Runtime: DSH Web / Desktop `0.2.1-rc.2` or newer
 - Dependencies: none — plain ESM on the Host, injected React UI on the Client
 
@@ -14,7 +14,7 @@ The plugin needs these services from the DSH profile:
 | --- | --- |
 | Host | `storageDomain`, `webServer`, `tools`, `timer` |
 | Host (fence) | `connection` — resolved per request with `ctx.get('connection')` |
-| Client | `slots`, `locale` |
+| Client | `slots`, `locale`; optional `uiWorkspace` (used to open a waiting session) |
 
 The stock `web` profile provides all of them. If `connection` is missing, every HTTP route fails closed with `503` rather than serving unauthenticated requests.
 
@@ -63,6 +63,43 @@ Guarantees:
 - Every tool call is written to the audit log (when `auditEnabled` is on), trimmed to 1000 entries and 90 days.
 - `focus_plan` and `skill_list` never write data.
 
+## Agent/session waiting observation (read-only)
+
+The Host watches two DSH waterfalls per root agent and never changes their result:
+
+| Event | Meaning |
+| --- | --- |
+| `user-questions/request` | The agent is waiting for the user to answer a question |
+| `approval/request` | The agent is waiting for the user to approve a tool call |
+| `approval/asked` / `approval/decided` (session events) | Durable fallback when the waterfall listener is missing (not a replay source after reload) |
+
+Implementation rules:
+
+- Listeners are installed on `agent.ctx` for root sessions (`agent/created` + `agents.list()` on boot) and fall back to the global `ctx.on` channel; `agent/disposed`/`session/disposed` clear them.
+- The wrapper calls `next()` exactly once and returns its value unchanged. It never answers, rejects, mutates the request, or extends the prompt.
+- Listeners are registered with `{ prepend: true }` so observation runs before an answerer that might claim the waterfall without calling `next()`; the wrapper still delegates unchanged.
+- `beginWait(session, kind, { toolName })` / `endWait(...)` are refcounted, so the waterfall and the `approval/asked|decided` audit pair cannot double-count.
+- Only root sessions are observed; subagent children are ignored.
+- Waiting changes bypass the 800 ms SSE agent-frame throttle so the UI reacts immediately.
+
+`GET /dsh-pomodoro/context` and every `agent` SSE frame now include:
+
+```json
+"agent": {
+  "waiting": {
+    "active": true,
+    "count": 1,
+    "list": [
+      { "sessionId": "…", "kind": "approval", "since": 0, "toolName": "bash", "label": "session title", "cwdName": "repo" }
+    ]
+  }
+}
+```
+
+The daily agent bucket (`settings` key `_agent_<YYYY-MM-DD>`) additionally stores `questions`, `approvals`, and `waitMs`; older buckets without those fields read as 0.
+
+The Client renders the same list three ways: the `pomodoro-pet-wait` overlay banner (flashing, dismissible), a `ContextBar` chip, and an `AgentWaitCard` in the Focus tab. All three call `uiWorkspace.openSession(sessionId)`; desktop notifications use `tag: pp-wait-<sessionId>` and also open the session on click. Device preferences: `pp-wait-alert` (in-app banner, default on) and `pp-wait-notify` (desktop notification, default on). The overlay is excluded from animation only when `prefers-reduced-motion` or `animationEnabled=false`, matching the rest of the UI.
+
 ## HTTP API
 
 All routes are registered on `ctx.webServer` behind the DSH connection trust fence, so they are reachable from the Web UI session. The fence is resolved per request (`ctx.get('connection')`): untrusted requests get the fence's `401`/`403`, and if the service is unavailable every route fails closed with `503`.
@@ -92,7 +129,7 @@ All routes are registered on `ctx.webServer` behind the DSH connection trust fen
 - Tables: `pets`, `sessions`, `days`, `settings`, `tasks`, `groups`, `achievements`, `inventory`, `proposals`, `audit_log`.
 - Retention: settled `sessions` rows older than the `maxSessionDays` plugin config (default 90) are deleted in small batches (one batch on boot, then one per reconcile tick); deletes are cheap now that each row is its own file. `days` aggregates behind the heatmap/reports are never pruned; waiting/running rows are never pruned.
 - Migration: stop DSH and copy `storages/pomodoro_pet/` (0.9.5+) to the new machine; from ≤0.9.4 copy the single `storages/pomodoro_pet.json` and the first start migrates it automatically. Pet level, tasks, stats, and achievements are restored.
-- Device preferences live in browser `localStorage` and do not travel with the data file: `pp-pet-pos`, `pp-pet-collapsed`, `pp-show-agent`, `pp-show-context`, `pp-seen-settlement`.
+- Device preferences live in browser `localStorage` and do not travel with the data file: `pp-pet-pos`, `pp-pet-collapsed`, `pp-show-agent`, `pp-show-context`, `pp-wait-alert`, `pp-wait-notify`, `pp-seen-settlement`.
 
 ## Development
 
@@ -111,4 +148,4 @@ Run the tests:
 node --test
 ```
 
-Expected: 121 tests, 121 passing. `host.test.mjs` loads the real `apply()` on an in-memory context and pins the trust fence, settings validation, and the break→waiting persistence/restart behavior; `i18n.test.mjs` pins dictionary sync and the `raw()` / `trRaw()` / `trf()` data boundary.
+Expected: 129 tests, 129 passing. `host.test.mjs` loads the real `apply()` on an in-memory context and pins the trust fence, settings validation, break→waiting persistence/restart, and read-only waiting observation (pass-through, approval audit folding, waterfall/audit overlap, `agent/created` install, `session/disposed` cleanup, subagent exclusion, multi-session sorting, model-facing summary sanitization); `i18n.test.mjs` pins dictionary sync and the `raw()` / `trRaw()` / `trf()` data boundary.

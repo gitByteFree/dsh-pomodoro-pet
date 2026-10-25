@@ -9,6 +9,8 @@
 export const LABEL_MAX = 28
 export const TOOL_RING_MAX = 200
 export const LAST_TOOLS_MAX = 5
+/** Bound on cached session metadata kept for waiting alerts. */
+export const SESSION_META_MAX = 20
 /** Tool activity window (ms) used to estimate "running tools". */
 export const ACTIVE_TOOL_WINDOW_MS = 8_000
 
@@ -68,28 +70,58 @@ export function createAgentBridge({ now = () => Date.now(), dayOf, titleOf } = {
 
   const state = {
     session: null,
+    /** sessionId -> { id, label, cwd, cwdName }, bounded; used by waiting alerts. */
+    sessionMeta: new Map(),
     agentRunning: false,
     runningSessionId: null,
     lastTools: [],
     toolEvents: [],
-    today: { day: dayKey(), tools: 0, steps: 0 },
+    /** `${sessionId}:${kind}` -> { sessionId, kind, since, toolName, label, cwdName, refs } */
+    waiting: new Map(),
+    today: { day: dayKey(), tools: 0, steps: 0, questions: 0, approvals: 0, waitMs: 0 },
     dirty: false,
     listeners: new Set(),
   }
 
-  const emit = () => {
+  const emit = (reason = 'change') => {
     for (const fn of state.listeners) {
-      try { fn() } catch { /* listener containment */ }
+      try { fn(reason) } catch { /* listener containment */ }
     }
   }
+
+  const emptyToday = (day) => ({ day, tools: 0, steps: 0, questions: 0, approvals: 0, waitMs: 0 })
 
   const rollDay = () => {
     const day = dayKey()
     if (state.today.day !== day) {
-      state.today = { day, tools: 0, steps: 0 }
+      state.today = emptyToday(day)
       state.dirty = true
+      // A session that waited across midnight still belongs to the new bucket's
+      // totals; keep the waiting entries but their elapsed time counts on end.
     }
     return day
+  }
+
+  /** Remember a root session's display metadata (label/cwd) for waiting alerts. */
+  const rememberSession = (session) => {
+    if (!session || !isRootSession(session) || !session.id) return null
+    const prev = state.sessionMeta.get(session.id)
+    let title = null
+    try { title = typeof titleOf === 'function' ? titleOf(session) : null } catch { title = null }
+    const cwd = session.header?.cwd ?? prev?.cwd ?? null
+    const meta = {
+      id: session.id,
+      label: sanitizeSessionLabel(title) || sanitizeSessionLabel(prev?.label) || null,
+      cwd,
+      cwdName: basenameOf(cwd) || prev?.cwdName || null,
+    }
+    state.sessionMeta.delete(session.id)
+    state.sessionMeta.set(session.id, meta)
+    if (state.sessionMeta.size > SESSION_META_MAX) {
+      const oldest = state.sessionMeta.keys().next().value
+      if (oldest !== undefined) state.sessionMeta.delete(oldest)
+    }
+    return meta
   }
 
   /** Merge a root session into the "current session" slot. */
@@ -107,6 +139,7 @@ export function createAgentBridge({ now = () => Date.now(), dayOf, titleOf } = {
       cwdName: basenameOf(cwd),
       lastActiveAt: now(),
     }
+    rememberSession(session)
     emit()
     return true
   }
@@ -121,11 +154,88 @@ export function createAgentBridge({ now = () => Date.now(), dayOf, titleOf } = {
     state.dirty = true
   }
 
+  /** Waiting entry for one session/kind; refcounted across waterfall + session events. */
+  const waitingList = () => [...state.waiting.values()]
+    .sort((a, b) => (b.since - a.since) || String(a.sessionId).localeCompare(String(b.sessionId)))
+    .map(({ sessionId, kind, since, toolName, label, cwdName }) => ({ sessionId, kind, since, toolName, label, cwdName }))
+
+  const beginWait = (session, kind, extra = {}) => {
+    if (!session || !isRootSession(session) || !session.id) return
+    const key = `${session.id}:${kind}`
+    const meta = rememberSession(session)
+    const existing = state.waiting.get(key)
+    if (existing) {
+      existing.refs += 1
+      if (extra.toolName) existing.toolName = String(extra.toolName)
+      if (meta) {
+        existing.label = meta.label ?? existing.label
+        existing.cwdName = meta.cwdName ?? existing.cwdName
+      }
+      return // the visible list did not change; skip a redundant immediate frame
+    }
+    state.waiting.set(key, {
+      sessionId: session.id,
+      kind,
+      since: now(),
+      toolName: extra.toolName ? String(extra.toolName) : null,
+      label: meta?.label ?? null,
+      cwdName: meta?.cwdName ?? null,
+      refs: 1,
+    })
+    rollDay()
+    if (kind === 'question') state.today.questions += 1
+    else if (kind === 'approval') state.today.approvals += 1
+    state.dirty = true
+    emit('waiting')
+  }
+
+  const endWait = (sessionOrId, kind) => {
+    const id = typeof sessionOrId === 'string' ? sessionOrId : sessionOrId?.id
+    if (!id) return
+    const key = `${id}:${kind}`
+    const entry = state.waiting.get(key)
+    if (!entry) return
+    entry.refs -= 1
+    if (entry.refs > 0) return // still waiting for another observer; no visible change
+    state.waiting.delete(key)
+    rollDay()
+    state.today.waitMs += Math.max(0, now() - entry.since)
+    state.dirty = true
+    emit('waiting')
+  }
+
+  const clearSession = (sessionOrId) => {
+    const id = typeof sessionOrId === 'string' ? sessionOrId : sessionOrId?.id
+    if (!id) return
+    let cleared = false
+    for (const [key, entry] of [...state.waiting.entries()]) {
+      if (entry.sessionId !== id) continue
+      state.waiting.delete(key)
+      state.today.waitMs += Math.max(0, now() - entry.since)
+      cleared = true
+    }
+    if (!cleared) return
+    rollDay()
+    state.dirty = true
+    emit('waiting')
+  }
+
   return {
     /** `session/event` feed. */
     onSessionEvent(session, event) {
       if (!isRootSession(session)) return
       const type = event?.type
+      // Durable approval audit pair: keeps the wait accurate when the waterfall
+      // listener is missing and clears it from the decided side. This is not a
+      // replay source: a reload cannot recover an already in-flight request.
+      if (type === 'approval/asked') {
+        beginWait(session, 'approval', { toolName: event.data?.toolName })
+        return
+      }
+      if (type === 'approval/decided') {
+        endWait(session, 'approval')
+        return
+      }
       if (type === 'step/end') {
         rollDay()
         state.today.steps += 1
@@ -190,6 +300,10 @@ export function createAgentBridge({ now = () => Date.now(), dayOf, titleOf } = {
           runningTools: recent.length,
           lastTools: state.lastTools.map(row => ({ ...row })),
           today: { ...state.today },
+          waiting: (() => {
+            const list = waitingList()
+            return { active: list.length > 0, count: list.length, list }
+          })(),
         },
         toolCount: state.toolEvents.length,
       }
@@ -202,6 +316,9 @@ export function createAgentBridge({ now = () => Date.now(), dayOf, titleOf } = {
         day,
         tools: Math.max(0, Number(bucket.tools) || 0),
         steps: Math.max(0, Number(bucket.steps) || 0),
+        questions: Math.max(0, Number(bucket.questions) || 0),
+        approvals: Math.max(0, Number(bucket.approvals) || 0),
+        waitMs: Math.max(0, Number(bucket.waitMs) || 0),
       }
     },
 
@@ -224,6 +341,18 @@ export function createAgentBridge({ now = () => Date.now(), dayOf, titleOf } = {
 
     session() { return state.session ? { ...state.session } : null },
     currentDay() { return dayKey() },
+
+    /** Read-only waiting-state observation (host wires pass-through listeners). */
+    beginWait(session, kind, extra) {
+      try { beginWait(session, kind, extra) } catch { /* observation must never fail the request */ }
+    },
+    endWait(sessionOrId, kind) {
+      try { endWait(sessionOrId, kind) } catch { /* observation must never fail the request */ }
+    },
+    clearSession(sessionOrId) {
+      try { clearSession(sessionOrId) } catch { /* observation must never fail the request */ }
+    },
+    waiting() { return waitingList() },
 
     onChange(fn) {
       state.listeners.add(fn)
