@@ -283,6 +283,7 @@ window.__ModuleLoader__.load({
       "深夜": "Late night", "上午 8–12": "Morning 8–12", "下午 12–18": "Afternoon 12–18", "晚上 18–22": "Evening 18–22",
       "深夜 22–08": "Late night 22–08", "🏅　成就": "🏅　Achievements", "普通": "Common", "稀有": "Rare", "史诗": "Epic",
       "传说": "Legendary", " · 已解锁": " · unlocked", " · 未解锁": " · locked",
+      "第一个番茄": "First pomodoro", "连续 3 天": "3-day streak", "连续 7 天": "7-day streak", "连续 30 天": "30-day streak", "单日 4 番茄": "4 pomodoros in a day", "单日 8 番茄": "8 pomodoros in a day", "累计 10 小时": "10 focus hours", "累计 100 小时": "100 focus hours", "累计 500 小时": "500 focus hours", "B 区践行者": "Quadrant B champion", "深度心流": "Deep flow", "晨型人": "Early bird", "夜猫子": "Night owl", "任务清道夫": "Task finisher", "未分类也算数": "Uncategorized counts", "满分预估": "Perfect estimates", "年度坚持": "Year-long persistence",
       "奖励 {n} 个装扮碎片": "Reward: {n} outfit fragments", "🗂　按会话": "🗂　By session", "会话时长占比": "Session time share",
       "会话与工作区": "Sessions & workspaces",
       "番茄自动归属到当时的 DSH 会话与工作区": "Pomodoros are attributed to the DSH session and workspace in effect",
@@ -1680,7 +1681,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         { text: `+${s.expGained} EXP`, color: '#df4e42', big: true },
         { text: `🔥 连续 ${s.streak} 天`, color: '#c78116' },
         ...(s.leveledUp ? [{ text: `⬆️ 升到 Lv.${s.level}!`, color: '#328b50', big: true }] : []),
-        ...(s.achievements ?? []).map(a => ({ text: `🏅 解锁成就「${a.name}」`, color: '#8E44AD' })),
+        ...(s.achievements ?? []).map(a => ({ text: `🏅 解锁成就「${tr(a.name)}」`, color: '#8E44AD' })),
         ...(Number(s.agentToolCount) > 0 ? [{
           text: `🤖 专注期间 Agent 执行 ${s.agentToolCount} 次工具`,
           color: '#5b76d6', sub: true,
@@ -2697,10 +2698,10 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
             const on = !!a.unlockedAt
             return h('div', {
               key: a.id, className: `pp-achv-chip${on ? ' on' : ''}`, style: { '--rc': r.color, '--rs': r.soft },
-              title: `${a.name} · ${trRarity(a.rarity)}${a.fragment ? ` · ${trf('奖励 {n} 个装扮碎片', { n: String(a.fragment) })}` : ''}${on ? tr(' · 已解锁') : tr(' · 未解锁')}`,
+              title: `${tr(a.name)} · ${trRarity(a.rarity)}${a.fragment ? ` · ${trf('奖励 {n} 个装扮碎片', { n: String(a.fragment) })}` : ''}${on ? tr(' · 已解锁') : tr(' · 未解锁')}`,
             },
               h('span', { className: 'medal', 'aria-hidden': true }, on ? '🏅' : '🔒'),
-              h('b', null, a.name),
+              h('b', null, tr(a.name)),
               h('small', null, trRarity(a.rarity)))
           })))
     }
@@ -3575,7 +3576,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
             h('span', { style: { fontWeight: 600, color: entry.result === 'ok' ? '#328b50' : '#df4e42', flexShrink: 0 } }, entry.toolAction),
             h('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, entry.result)))),
         card('关于', 'ℹ️', [
-          row('版本', '番茄精灵 · DSH 插件', h('span', { className: 'pp-sstatus muted', style: { fontVariantNumeric: 'tabular-nums' } }, '0.9.3')),
+          row('版本', '番茄精灵 · DSH 插件', h('span', { className: 'pp-sstatus muted', style: { fontVariantNumeric: 'tabular-nums' } }, '0.9.4')),
         ]))
 
       return h('div', { className: 'pp-settings' },

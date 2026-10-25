@@ -4,7 +4,7 @@ DSH Web 的专注小搭档：一个番茄钟、一套四象限任务，和一只
 
 ![番茄精灵专注面板](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/focus-panel.png)
 
-**版本 0.9.3** · 需要 DSH Web `0.2.1-rc.2` 及以上 · 零 npm 依赖 · 数据只存本机
+**版本 0.9.4** · 需要 DSH Web `0.2.1-rc.2` 及以上 · 零 npm 依赖 · 数据只存本机
 
 [English](README.md) | **中文**
 
@@ -115,7 +115,7 @@ dsh plugin add dsh-pomodoro-pet
 ### 方式三：一键脚本
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.3.tar.gz
+tar -xzf dsh-pomodoro-pet-0.9.4.tar.gz
 cd dsh-pomodoro-pet
 ./install.sh                # 默认装到 ~/dsh-plugins，profile 为 web
 ```
@@ -177,7 +177,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/stat
 
 - 侧边栏出现 🍅 **番茄精灵**
 - 右下角出现可拖动的桌宠胶囊
-- 设置 → 关于显示版本 `0.9.3`
+- 设置 → 关于显示版本 `0.9.4`
 
 ## 使用速览
 

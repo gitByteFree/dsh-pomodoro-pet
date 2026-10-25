@@ -3,7 +3,7 @@
 一个 DSH Web GUI 的番茄钟 + 桌面宠物插件：侧边栏面板（专注 / 统计 / 设置）、
 可拖动桌宠、成就与装扮、四象限任务、以及跟 DSH 会话 / Agent / 技能联动的功能。
 
-- 版本：**0.9.3**
+- 版本：**0.9.4**
 - 依赖：**零 npm 依赖**（纯 ESM + 浏览器原生 React 注入），只需 DSH 本体
 - 语言：中文 / English（跟随 DSH「设置 → 通用 → 语言」）
 - 主题：跟随 DSH「设置 → 通用 → 外观」（浅色 / 深色 / 跟随系统）
@@ -29,7 +29,7 @@ dsh plugin add dsh-pomodoro-pet
 解压后进入目录，直接跑安装脚本：
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.3.tar.gz
+tar -xzf dsh-pomodoro-pet-0.9.4.tar.gz
 cd dsh-pomodoro-pet
 ./install.sh                 # 默认装到 ~/dsh-plugins，profile = web
 # 或指定：./install.sh --dest ~/my-plugins --profile web
@@ -174,7 +174,7 @@ curl -s http://127.0.0.1:3080/dsh-pomodoro/context | head -c 400
 GUI 侧应能看到：
 - 侧边栏出现 🍅 图标，点开是「专注时间」页
 - 右下角出现可拖动的桌宠胶囊
-- 设置页最下方「版本」显示 `0.9.3`
+- 设置页最下方「版本」显示 `0.9.4`
 
 ### 可选：跑单元测试
 
