@@ -1942,6 +1942,43 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       return { openId, close }
     }
 
+    /* ---------------- Desktop pet position: shared by the overlay and Settings ----
+     * The pet renders in the shell.overlay slot and its "Reset position" button
+     * renders in the main slot, i.e. two React trees. A module-level store keeps
+     * them in sync: resetting moves the live pet immediately instead of waiting
+     * for the next mount. */
+    const PET_POS_KEY = 'pp-pet-pos'
+    const PET_W = 178, PET_H = 44 // 胶囊尺寸（收纳时也能落回同一边界, 不跳动）
+    const clampPetPos = (x, y) => ({
+      x: Math.max(8, Math.min(window.innerWidth - PET_W, x)),
+      y: Math.max(8, Math.min(window.innerHeight - PET_H, y)),
+    })
+    const defaultPetPos = () => clampPetPos(window.innerWidth - PET_W - 12, window.innerHeight - PET_H - 16)
+    function readPetPos() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PET_POS_KEY) ?? 'null')
+        if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) return { x: saved.x, y: saved.y }
+      } catch { /* corrupt or storage unavailable */ }
+      return { x: null, y: null }
+    }
+    const petPosStore = {
+      pos: readPetPos(),
+      listeners: new Set(),
+      /** Move the pet; `persist` is false while dragging so only the drop point is saved. */
+      set(next, persist = true) {
+        this.pos = clampPetPos(next.x, next.y)
+        if (persist) { try { localStorage.setItem(PET_POS_KEY, JSON.stringify(this.pos)) } catch { /* storage full */ } }
+        for (const fn of this.listeners) fn(this.pos)
+      },
+      /** Apply a functional update against the latest position. */
+      update(updater, persist = true) { this.set(updater(this.pos), persist) },
+      /** Settings → 归位: forget the saved spot and snap the live pet to the default corner. */
+      reset() {
+        try { localStorage.removeItem(PET_POS_KEY) } catch { /* ignore */ }
+        this.set(defaultPetPos(), false)
+      },
+    }
+
     /* ---------------- Desktop pet (shell.overlay) ---------------- */
     function PetOverlay() {
       ensureStyles()
@@ -1949,9 +1986,11 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const { snap, refresh } = useSnapshot()
       usePhaseFx(snap)
       const { openId, close } = useSettlement(snap, refresh)
-      const [pos, setPos] = React.useState(() => {
-        try { return JSON.parse(localStorage.getItem('pp-pet-pos') ?? 'null') ?? { x: null, y: null } } catch { return { x: null, y: null } }
-      })
+      const [pos, setPos] = React.useState(petPosStore.pos)
+      React.useEffect(() => {
+        petPosStore.listeners.add(setPos)
+        return () => { petPosStore.listeners.delete(setPos) }
+      }, [])
       // 收纳状态持久化（刷新后保持）; 收纳后必须能点开恢复
       const [collapsed, setCollapsed] = React.useState(() => {
         try { return localStorage.getItem('pp-pet-collapsed') === '1' } catch { return false }
@@ -1979,20 +2018,15 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const lastToolBubbleAt = React.useRef(0)
       const heroLastLine = React.useRef('')
 
-      const PET_W = 178, PET_H = 44 // 胶囊尺寸（收纳时也能落回同一边界, 不跳动）
-      const clamp = (x, y) => ({
-        x: Math.max(8, Math.min(window.innerWidth - PET_W, x)),
-        y: Math.max(8, Math.min(window.innerHeight - PET_H, y)),
-      })
       React.useEffect(() => {
-        if (pos.x == null) setPos({ x: window.innerWidth - PET_W - 12, y: window.innerHeight - PET_H - 16 })
+        if (petPosStore.pos.x == null) petPosStore.set(defaultPetPos(), false)
       }, [])
       React.useEffect(() => () => { clearTimeout(clickTimer.current) }, [])
       /** 收纳/展开唯一入口: 持久化 + 展开时把胶囊拉回边界内（收纳时是 26px 圆点, 原位置可能贴边）。 */
       const toggleCollapsed = (next) => {
         setCollapsed(next)
         try { localStorage.setItem('pp-pet-collapsed', next ? '1' : '0') } catch { /* storage full */ }
-        if (!next) setPos(p => clamp(p.x, p.y))
+        if (!next) petPosStore.update(p => clampPetPos(p.x, p.y))
       }
 
       const onPointerDown = (e) => {
@@ -2003,16 +2037,15 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         if (!drag.current) return
         const dx = e.clientX - drag.current.sx, dy = e.clientY - drag.current.sy
         if (Math.abs(dx) + Math.abs(dy) > 4) drag.current.moved = true
-        if (drag.current.moved) setPos(clamp(drag.current.ox + dx, drag.current.oy + dy))
+        if (drag.current.moved) petPosStore.set(clampPetPos(drag.current.ox + dx, drag.current.oy + dy), false)
       }
       const onPointerUp = () => {
         const moved = drag.current?.moved
         didDrag.current = !!moved
         didCollapseClick.current = false
         if (moved) {
-          const { x, y } = clamp(pos.x, pos.y)
-          setPos({ x, y })
-          try { localStorage.setItem('pp-pet-pos', JSON.stringify({ x, y })) } catch { /* storage full */ }
+          const { x, y } = clampPetPos(petPosStore.pos.x, petPosStore.pos.y)
+          petPosStore.set({ x, y })
         }
         drag.current = null
         // 单击（未拖动）= 展开收纳的小圆点（收纳态唯一的恢复入口）
@@ -2020,10 +2053,10 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       }
       const onKey = (e) => {
         const step = e.shiftKey ? 32 : 8
-        if (e.key === 'ArrowLeft') { setPos(p => clamp(p.x - step, p.y)); e.preventDefault() }
-        else if (e.key === 'ArrowRight') { setPos(p => clamp(p.x + step, p.y)); e.preventDefault() }
-        else if (e.key === 'ArrowUp') { setPos(p => clamp(p.x, p.y - step)); e.preventDefault() }
-        else if (e.key === 'ArrowDown') { setPos(p => clamp(p.x, p.y + step)); e.preventDefault() }
+        if (e.key === 'ArrowLeft') { petPosStore.update(p => clampPetPos(p.x - step, p.y)); e.preventDefault() }
+        else if (e.key === 'ArrowRight') { petPosStore.update(p => clampPetPos(p.x + step, p.y)); e.preventDefault() }
+        else if (e.key === 'ArrowUp') { petPosStore.update(p => clampPetPos(p.x, p.y - step)); e.preventDefault() }
+        else if (e.key === 'ArrowDown') { petPosStore.update(p => clampPetPos(p.x, p.y + step)); e.preventDefault() }
         else if (e.key === 'Enter' || e.key === ' ') { toggleCollapsed(!collapsed); e.preventDefault() }
         else if (e.key === 'Escape') { toggleCollapsed(true) }
       }
@@ -2199,20 +2232,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const [tab, setTab] = React.useState('focus')
       const [quadFilter, setQuadFilter] = React.useState('all') // 象限卡 → 任务区分联动
       const [helpOpen, setHelpOpen] = React.useState(false)
-      if (!snap) {
-        ensureStyles()
-        return h('div', { className: 'pp-app', 'data-theme': theme.effective, style: { padding: 24, color: 'var(--pp-muted)', fontFamily: FONT } }, '正在连接番茄钟服务…')
-      }
-      const pendingCount = (snap.proposals ?? []).filter(p => p.status === 'pending').length
-      const goal = Math.max(1, Number(snap.settings.dailyGoalPomodoros) || 8)
-      const done = snap.todayStats?.completed ?? 0
-      const stage = trStage(snap.pet.stage)
-      const moodText = trMood(snap.pet.mood)
-      const goto = (next, filter) => {
-        if (filter !== undefined) setQuadFilter(filter)
-        setTab(next)
-        try { window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' }) } catch { /* non-window */ }
-      }
+      const appRef = React.useRef(null)
 
       /* ---- v0.9 面板快捷键（修复「不起作用」） ----
        * Space 开始/暂停/继续 · S 停止/跳过休息 · 1/2/3 切模式 · ? 快捷键 · Esc 关弹窗
@@ -2231,6 +2251,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         const onKey = (e) => {
           if (e.metaKey || e.ctrlKey || e.altKey) return
           if (!document.querySelector('.pp-app')) return
+          if (!snap) return
           const el = e.target instanceof Element ? e.target : document.activeElement
           const typing = !!el?.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]')
           const inModal = !!el?.closest?.('.pp-backdrop, .pp-modal')
@@ -2271,7 +2292,29 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         return () => window.removeEventListener('keydown', onKey, true)
       }, [snap?.running?.id, snap?.running?.status, snap?.running?.revision, openId, helpOpen])
 
-      return h('div', { className: 'pp-app', 'data-theme': theme.effective, style: { fontFamily: FONT, color: 'var(--pp-ink)' } },
+      if (!snap) {
+        ensureStyles()
+        return h('div', { className: 'pp-app', 'data-theme': theme.effective, style: { padding: 24, color: 'var(--pp-muted)', fontFamily: FONT } }, '正在连接番茄钟服务…')
+      }
+      const pendingCount = (snap.proposals ?? []).filter(p => p.status === 'pending').length
+      const goal = Math.max(1, Number(snap.settings.dailyGoalPomodoros) || 8)
+      const done = snap.todayStats?.completed ?? 0
+      const stage = trStage(snap.pet.stage)
+      const moodText = trMood(snap.pet.mood)
+      const goto = (next, filter) => {
+        if (filter !== undefined) setQuadFilter(filter)
+        setTab(next)
+        // The panel owns its scroll container (`.pp-app`); the window itself never
+        // scrolls, so the old window.scrollTo() was a no-op on both carriers.
+        const scroller = appRef.current
+        try {
+          const behavior = reduceMotion() ? 'auto' : 'smooth'
+          if (scroller) scroller.scrollTo({ top: 0, behavior })
+          else window.scrollTo({ top: 0, behavior })
+        } catch { /* non-window */ }
+      }
+
+      return h('div', { ref: appRef, className: 'pp-app', 'data-theme': theme.effective, style: { fontFamily: FONT, color: 'var(--pp-ink)' } },
         h('main', null,
           // 顶部 header: 品牌 | 导航 | 档案
           h('header', { className: 'pp-header' },
@@ -3728,7 +3771,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
           row('归位', '把桌宠移回右下角默认位置',
             h('button', {
               type: 'button', className: 'pp-sbtn',
-              onClick: () => { try { localStorage.removeItem('pp-pet-pos') } catch { /* ignore */ } persist({ petPosition: null }) },
+              onClick: () => { petPosStore.reset(); persist({ petPosition: null }) },
             }, '重置位置')),
         ]),
         card('统计', '📊', [
@@ -3790,6 +3833,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       __test: {
         tr, trf, trRaw, raw, isRaw, h, EN_TEXT, PATTERNS,
         localeState: i18nStore,
+        petPosStore,
         setLocale(locale) {
           i18nStore.locale = String(locale || 'zh')
           i18nStore.dict = buildDict()
