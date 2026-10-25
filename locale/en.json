@@ -1,12 +1,6 @@
 {
   "meta": {
-    "title": {
-      "zh": "番茄精灵",
-      "en": "Pomodoro Pet"
-    },
-    "description": {
-      "zh": "番茄精灵专注伙伴：侧边栏番茄钟面板 + 可拖动桌宠。完成番茄钟喂养经验值，从青芽一路进化到发光果。",
-      "en": "A pomodoro focus companion: a timer panel in the sidebar plus a draggable desktop pet. Completing pomodoros feeds it EXP; it grows from sprout to glowing fruit."
-    }
+    "title": "Pomodoro Pet",
+    "description": "A pomodoro focus companion: a timer panel in the sidebar plus a draggable desktop pet. Completing pomodoros feeds it EXP; it grows from sprout to glowing fruit."
   }
 }

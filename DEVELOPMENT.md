@@ -2,7 +2,7 @@
 
 Technical details for developers and tool authors. User-facing docs: [README.md](README.md) / [README.zh.md](README.zh.md). Install walkthrough: [INSTALL.md](INSTALL.md).
 
-- Version: **0.9.2**
+- Version: **0.9.3**
 - Runtime: DSH Web `0.2.1-rc.2` or newer
 - Dependencies: none — plain ESM on the Host, injected React UI on the Client
 

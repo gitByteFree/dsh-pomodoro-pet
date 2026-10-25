@@ -4,7 +4,7 @@ A focus companion for DSH Web: a pomodoro timer, four-quadrant tasks, and a pet 
 
 ![Pomodoro Pet focus panel](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/focus-panel.png)
 
-**Version 0.9.2** · Requires DSH Web `0.2.1-rc.2`+ · Zero npm dependencies · Data stays on your machine
+**Version 0.9.3** · Requires DSH Web `0.2.1-rc.2`+ · Zero npm dependencies · Data stays on your machine
 
 **English** | [中文](README.zh.md)
 
@@ -115,7 +115,7 @@ Then restart `dsh web` and refresh the browser. This path is not delayed by the 
 ### Option 3: One-click script
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.2.tar.gz
+tar -xzf dsh-pomodoro-pet-0.9.3.tar.gz
 cd dsh-pomodoro-pet
 ./install.sh                # installs to ~/dsh-plugins, profile "web"
 ```
@@ -177,7 +177,7 @@ In the GUI you should see:
 
 - 🍅 **Pomodoro Pet** in the sidebar
 - A draggable pet capsule in the bottom-right corner
-- Version `0.9.2` under Settings → About
+- Version `0.9.3` under Settings → About
 
 ## Quick start
 
