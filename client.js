@@ -443,7 +443,7 @@ window.__ModuleLoader__.load({
       [/^(\d+) 分钟$/g, "$1 min"],
       [/^(\d+)月$/g, "$1"],
       [/^≈ (\d+) 分钟$/g, "≈ $1 min"],
-    
+
     ]
     const buildDict = () => ({ text: EN_TEXT })
 
