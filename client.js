@@ -3746,7 +3746,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
             h('span', { style: { fontWeight: 600, color: entry.result === 'ok' ? '#328b50' : '#df4e42', flexShrink: 0 } }, entry.toolAction),
             h('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, entry.result)))),
         card('关于', 'ℹ️', [
-          row('版本', '番茄精灵 · DSH 插件', h('span', { className: 'pp-sstatus muted', style: { fontVariantNumeric: 'tabular-nums' } }, '0.9.4')),
+          row('版本', '番茄精灵 · DSH 插件', h('span', { className: 'pp-sstatus muted', style: { fontVariantNumeric: 'tabular-nums' } }, '0.9.5')),
         ]))
 
       return h('div', { className: 'pp-settings' },

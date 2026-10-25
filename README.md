@@ -4,7 +4,7 @@ A focus companion for DSH Web: a pomodoro timer, four-quadrant tasks, and a pet 
 
 ![Pomodoro Pet focus panel](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/focus-panel.png)
 
-**Version 0.9.4** · Requires DSH Web `0.2.1-rc.2`+ · Zero npm dependencies · Data stays on your machine
+**Version 0.9.5** · Requires DSH Web `0.2.1-rc.2`+ · Zero npm dependencies · Data stays on your machine
 
 **English** | [中文](README.zh.md)
 
@@ -80,7 +80,7 @@ Just ask in a DSH conversation:
 - No uploads, no telemetry, no remote calls
 - Session names, workspace paths, and task titles are shown locally only; task titles are hidden by default
 - Agent context never appears in exported files
-- Data lives in `$DSH_HOME/storages/pomodoro_pet.json`; copy that file to migrate
+- Data lives in `$DSH_HOME/storages/pomodoro_pet/` (one JSON document per record); copy that folder to migrate. Upgrading from 0.9.4 or earlier migrates the old single `pomodoro_pet.json` automatically on first start and keeps it as a backup
 
 ## Installation
 
@@ -115,7 +115,7 @@ Then restart `dsh web` and refresh the browser. This path is not delayed by the 
 ### Option 3: One-click script
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.4.tar.gz
+tar -xzf dsh-pomodoro-pet-0.9.5.tar.gz
 cd dsh-pomodoro-pet
 ./install.sh                # installs to ~/dsh-plugins, profile "web"
 ```
@@ -177,7 +177,7 @@ In the GUI you should see:
 
 - 🍅 **Pomodoro Pet** in the sidebar
 - A draggable pet capsule in the bottom-right corner
-- Version `0.9.4` under Settings → About
+- Version `0.9.5` under Settings → About
 
 ## Quick start
 
@@ -221,7 +221,7 @@ Available while the panel is open:
 
 ## Data and uninstall
 
-- Data file: `$DSH_HOME/storages/pomodoro_pet.json`
+- Data folder: `$DSH_HOME/storages/pomodoro_pet/` (the pre-0.9.5 single file `pomodoro_pet.json` is auto-migrated once and kept as a backup)
 - Migration: stop DSH, copy that file to the same path on the new machine, start DSH
 - Uninstall: remove `dsh-pomodoro-pet` from `~/.dsh/profiles/web/package.json`, delete the 4 patch lines from `cordis.patch.yml`, remove the `node_modules` symlink, restart `dsh web`
 - Uninstalling keeps your data; delete the JSON file above to reset everything

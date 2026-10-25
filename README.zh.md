@@ -4,7 +4,7 @@ DSH Web 的专注小搭档：一个番茄钟、一套四象限任务，和一只
 
 ![番茄精灵专注面板](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/focus-panel.png)
 
-**版本 0.9.4** · 需要 DSH Web `0.2.1-rc.2` 及以上 · 零 npm 依赖 · 数据只存本机
+**版本 0.9.5** · 需要 DSH Web `0.2.1-rc.2` 及以上 · 零 npm 依赖 · 数据只存本机
 
 [English](README.md) | **中文**
 
@@ -80,7 +80,7 @@ DSH Web 的专注小搭档：一个番茄钟、一套四象限任务，和一只
 - 不上传、无遥测、不发起远程请求
 - 会话名、工作区路径、任务标题只在本机展示，任务标题默认隐藏
 - Agent 上下文不会进入导出文件
-- 数据保存在 `$DSH_HOME/storages/pomodoro_pet.json`，拷走这个文件就能迁移
+- 数据保存在 `$DSH_HOME/storages/pomodoro_pet/`（每条记录一个 JSON 文档），拷走这个目录即可迁移；从 0.9.4 及更早版本升级时，旧的单文件 `pomodoro_pet.json` 会在首次启动自动迁移，并保留为备份
 
 ## 安装
 
@@ -115,7 +115,7 @@ dsh plugin add dsh-pomodoro-pet
 ### 方式三：一键脚本
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.4.tar.gz
+tar -xzf dsh-pomodoro-pet-0.9.5.tar.gz
 cd dsh-pomodoro-pet
 ./install.sh                # 默认装到 ~/dsh-plugins，profile 为 web
 ```
@@ -177,7 +177,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/stat
 
 - 侧边栏出现 🍅 **番茄精灵**
 - 右下角出现可拖动的桌宠胶囊
-- 设置 → 关于显示版本 `0.9.4`
+- 设置 → 关于显示版本 `0.9.5`
 
 ## 使用速览
 
@@ -221,7 +221,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/stat
 
 ## 数据与卸载
 
-- 数据文件：`$DSH_HOME/storages/pomodoro_pet.json`
+- 数据目录：`$DSH_HOME/storages/pomodoro_pet/`（0.9.5 之前的单文件 `pomodoro_pet.json` 会自动迁移一次并保留备份）
 - 迁移：关掉 DSH，把该文件拷到新机器同一路径，再启动即可
 - 卸载：从 `~/.dsh/profiles/web/package.json` 移除 `dsh-pomodoro-pet`，删掉 `cordis.patch.yml` 里对应的 4 行，删除 `node_modules` 软链，重启 `dsh web`
 - 卸载不会删除数据；要清空就删除上面的 JSON 文件

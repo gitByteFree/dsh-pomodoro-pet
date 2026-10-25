@@ -2,7 +2,7 @@
 
 Technical details for developers and tool authors. User-facing docs: [README.md](README.md) / [README.zh.md](README.zh.md). Install walkthrough: [INSTALL.md](INSTALL.md).
 
-- Version: **0.9.4**
+- Version: **0.9.5**
 - Runtime: DSH Web `0.2.1-rc.2` or newer
 - Dependencies: none — plain ESM on the Host, injected React UI on the Client
 
@@ -86,10 +86,10 @@ All routes are registered on `ctx.webServer` behind the DSH connection trust fen
 
 ## Data and storage
 
-- Domain storage: `storageDomain: pomodoro_pet`, persisted at `$DSH_HOME/storages/pomodoro_pet.json` on the default single-file layout. Every row write republishes the whole file, so tables are kept bounded.
+- Domain storage: `storageDomain: pomodoro_pet`, persisted at `$DSH_HOME/storages/pomodoro_pet/` on the `per-record` layout (one JSON document per row, so a write costs a constant ~2-4ms instead of republishing the whole file). The storage backend automatically bootstraps this tree from the legacy 0.9.4 single file `$DSH_HOME/storages/pomodoro_pet.json` on first open and leaves that file untouched as a backup.
 - Tables: `pets`, `sessions`, `days`, `settings`, `tasks`, `groups`, `achievements`, `inventory`, `proposals`, `audit_log`.
-- Retention: settled `sessions` rows older than the `maxSessionDays` plugin config (default 90) are deleted in small batches (one batch on boot, then one per reconcile tick) because every row delete republishes the whole single-layout file. `days` aggregates behind the heatmap/reports are never pruned; waiting/running rows are never pruned.
-- Migration: stop DSH, copy `pomodoro_pet.json` to the same path on the new machine, then start DSH. Pet level, tasks, stats, and achievements are restored.
+- Retention: settled `sessions` rows older than the `maxSessionDays` plugin config (default 90) are deleted in small batches (one batch on boot, then one per reconcile tick); deletes are cheap now that each row is its own file. `days` aggregates behind the heatmap/reports are never pruned; waiting/running rows are never pruned.
+- Migration: stop DSH and copy `storages/pomodoro_pet/` (0.9.5+) to the new machine; from ≤0.9.4 copy the single `storages/pomodoro_pet.json` and the first start migrates it automatically. Pet level, tasks, stats, and achievements are restored.
 - Device preferences live in browser `localStorage` and do not travel with the data file: `pp-pet-pos`, `pp-pet-collapsed`, `pp-show-agent`, `pp-show-context`, `pp-seen-settlement`.
 
 ## Development

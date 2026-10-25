@@ -3,7 +3,7 @@
 一个 DSH Web GUI 的番茄钟 + 桌面宠物插件：侧边栏面板（专注 / 统计 / 设置）、
 可拖动桌宠、成就与装扮、四象限任务、以及跟 DSH 会话 / Agent / 技能联动的功能。
 
-- 版本：**0.9.4**
+- 版本：**0.9.5**
 - 依赖：**零 npm 依赖**（纯 ESM + 浏览器原生 React 注入），只需 DSH 本体
 - 语言：中文 / English（跟随 DSH「设置 → 通用 → 语言」）
 - 主题：跟随 DSH「设置 → 通用 → 外观」（浅色 / 深色 / 跟随系统）
@@ -29,7 +29,7 @@ dsh plugin add dsh-pomodoro-pet
 解压后进入目录，直接跑安装脚本：
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.4.tar.gz
+tar -xzf dsh-pomodoro-pet-0.9.5.tar.gz
 cd dsh-pomodoro-pet
 ./install.sh                 # 默认装到 ~/dsh-plugins，profile = web
 # 或指定：./install.sh --dest ~/my-plugins --profile web
@@ -176,7 +176,7 @@ curl -s http://127.0.0.1:3080/dsh-pomodoro/context | head -c 400
 GUI 侧应能看到：
 - 侧边栏出现 🍅 图标，点开是「专注时间」页
 - 右下角出现可拖动的桌宠胶囊
-- 设置页最下方「版本」显示 `0.9.4`
+- 设置页最下方「版本」显示 `0.9.5`
 
 ### 可选：跑单元测试
 
@@ -191,9 +191,9 @@ node --test
 ## 五、数据与存储
 
 - 数据落在 DSH 的 domain storage：`storageDomain: pomodoro_pet`
-  （本机实测为 `$DSH_HOME/storages/pomodoro_pet.json`）
+  （本机实测为 `$DSH_HOME/storages/pomodoro_pet/` 目录）
 - 表：`pets` `sessions` `days` `settings` `tasks` `groups` `achievements` `inventory` `proposals` `audit_log`
-- **迁移**：把老机器的 `~/.dsh/storages/pomodoro_pet.json` 拷到新机器同一路径即可继承全部数据（宠物等级、任务、统计、成就）。
+- **迁移**：把老机器的 `~/.dsh/storages/pomodoro_pet/` 目录（0.9.5+）拷到新机器同一路径即可；若老机器是 0.9.4 及更早，拷 `pomodoro_pet.json` 单文件，首次启动会自动迁移。
   建议拷贝前先关掉 DSH，避免写入竞争。
 - 设备级偏好（存在浏览器 `localStorage`，不随数据文件走）：
   - `pp-pet-pos` 桌宠位置、`pp-pet-collapsed` 收纳状态
@@ -237,7 +237,7 @@ rm ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet
 # 4) 重启 dsh web
 ```
 
-数据不会被自动删除；如需清空再删 `$DSH_HOME/storages/pomodoro_pet.json`。
+数据不会被自动删除；如需清空再删 `$DSH_HOME/storages/pomodoro_pet/` 目录（旧版备份 `pomodoro_pet.json` 可一并删除）。
 
 ---
 
