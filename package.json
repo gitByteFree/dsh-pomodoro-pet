@@ -1,7 +1,7 @@
 {
   "name": "dsh-pomodoro-pet",
   "version": "0.9.5",
-  "description": "A focus companion for DeepSeek Harness Web: pomodoro timer, four-quadrant tasks, and a pet that grows with your focus.",
+  "description": "A focus companion for DeepSeek Harness (Web and Desktop): pomodoro timer, four-quadrant tasks, and a pet that grows with your focus.",
   "type": "module",
   "license": "MIT",
   "author": "chris",

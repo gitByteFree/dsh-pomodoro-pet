@@ -1,10 +1,10 @@
 # 🍅 Pomodoro Pet (番茄精灵)
 
-A focus companion for DSH Web: a pomodoro timer, four-quadrant tasks, and a pet that grows along with your focus.
+A focus companion for DSH Web / Desktop: a pomodoro timer, four-quadrant tasks, and a pet that grows along with your focus.
 
 ![Pomodoro Pet focus panel](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/focus-panel.png)
 
-**Version 0.9.5** · Requires DSH Web `0.2.1-rc.2`+ · Zero npm dependencies · Data stays on your machine
+**Version 0.9.5** · Requires DSH Web / Desktop `0.2.1-rc.2`+ · Zero npm dependencies · Data stays on your machine
 
 **English** | [中文](README.zh.md)
 
@@ -84,19 +84,30 @@ Just ask in a DSH conversation:
 
 ## Installation
 
-Before you start: **DSH Web** (`0.2.1-rc.2` or newer) and a modern browser with `localStorage`. The plugin has zero npm dependencies and needs no build step.
+Before you start: **DSH Web or DSH Desktop** (`0.2.1-rc.2` or newer). The plugin has zero npm dependencies and needs no build step.
 
-### Option 1: Install from npm (fastest)
+> Web and Desktop are separate profiles: Web uses `~/.dsh/profiles/web`, Desktop exclusively owns `~/.dsh/profiles/desktop`. Installing on one does not make the plugin appear on the other; the focus data (`$DSH_HOME/storages/pomodoro_pet/`) is shared.
+
+### Option 1: Install from the Plugins page (Web and Desktop)
 
 The plugin is published on npm as `dsh-pomodoro-pet`.
 
-In DSH, open **Plugins → Installed → Add plugin**, enter `dsh-pomodoro-pet`, and click **Install**. Or from a shell:
+**Web**: open **Plugins → Installed → Add plugin**, enter `dsh-pomodoro-pet`, and click **Install**; then restart `dsh web` and refresh the browser. This path is not delayed by the plugin-market index cache.
+
+**Desktop**: open **Plugins → Add plugin** in the desktop app, enter `dsh-pomodoro-pet` → **Install** → **Enable now**. It normally applies live; if a restart is requested, quit the app completely and reopen it.
+
+From a shell (do not mix the two profiles):
 
 ```bash
+# Web profile (any npm-installed dsh)
 dsh plugin add dsh-pomodoro-pet
+
+# Desktop profile: use the desktop app's own dsh command (app menu → Manage dsh Command… → Install)
+# and fully quit the app before running it
+dsh plugin --profile desktop add dsh-pomodoro-pet
 ```
 
-Then restart `dsh web` and refresh the browser. This path is not delayed by the plugin-market index cache.
+> An npm-installed `dsh` cannot modify the Desktop profile, and the Desktop app does not load plugins installed into `profiles/web`.
 
 ### Option 2: Install from the plugin market
 
@@ -108,7 +119,7 @@ Then restart `dsh web` and refresh the browser. This path is not delayed by the 
    ```
 
 3. Find **Pomodoro Pet** and install it
-4. Restart `dsh web`, then refresh the browser
+4. Restart `dsh web` and refresh the browser (Desktop: enable the experimental plugin market, add the same index under Discover, then click **Enable now** after installing)
 
 > The index is served through jsDelivr because the marketplace requires a direct `200` without redirects. A new release may take up to 12 hours to appear because of edge caching. Where GitHub is reachable, `https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json` serves the same file.
 
@@ -120,7 +131,7 @@ cd dsh-pomodoro-pet
 ./install.sh                # installs to ~/dsh-plugins, profile "web"
 ```
 
-The script copies the plugin, registers it in the profile, creates the `node_modules` symlink, and injects the patch. It is idempotent. Then restart DSH:
+The script is for the **Web profile** only: it copies the plugin, registers it in the profile, and creates the `node_modules` symlink. The plugin's own `cordis.patch.yml` is applied automatically, so it does not touch the profile patch. It is idempotent and refuses the reserved `desktop` profile. For Desktop use Option 1. Then restart DSH:
 
 ```bash
 # Press Ctrl+C in the terminal running dsh web, then start it again
@@ -150,16 +161,9 @@ Custom location or profile:
    ln -sfn ~/dsh-plugins/dsh-pomodoro-pet ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet
    ```
 
-4. Append the plugin row to `~/.dsh/profiles/web/cordis.patch.yml`:
+4. Restart `dsh web` and refresh the browser
 
-   ```yaml
-   - insert:
-       - id: pomodoro-pet
-         name: 'dsh-pomodoro-pet'
-         config: {}
-   ```
-
-5. Restart `dsh web` and refresh the browser
+> Since DSH `0.2.1-rc.2` the plugin's own `cordis.patch.yml` (`dsh.bundle.patch`) is applied automatically, so the manual `insert` row is no longer needed. If an older guide added it, you can remove it; a duplicate row id is de-duplicated by the Loader (last one wins) but adds no value.
 
 For a detailed walkthrough, see [INSTALL.md](https://github.com/gitByteFree/dsh-pomodoro-pet/blob/main/INSTALL.md) (Chinese).
 
@@ -167,11 +171,15 @@ For a detailed walkthrough, see [INSTALL.md](https://github.com/gitByteFree/dsh-
 
 ### Verify the install
 
+**Web**:
+
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/state
 ```
 
 A `200` means the Host half loaded. `3080` is `dsh web`'s default port; if you started it with `--port` (for example `8080`), use that port instead.
+
+**Desktop**: the Host port is OS-assigned and requests need the cookie the app injects, so a direct `curl` returns `401` — that is the plugin's trust fence working, not a broken install. Confirm in the UI instead.
 
 In the GUI you should see:
 
@@ -210,21 +218,25 @@ Available while the panel is open:
 <details>
 <summary>Expand troubleshooting</summary>
 
-- **No sidebar icon / blank panel**: check the `dsh web` log for `pomodoro-pet` errors, then verify the `cordis.patch.yml` indentation and that the bundle is in `dsh.profile.bundles`
-- **`/dsh-pomodoro/state` returns 404**: the Host half did not load. Check the symlink and bundle list, and confirm you restarted `dsh web`
+- **No sidebar icon / blank panel**: check the startup log for `pomodoro-pet` errors, then verify the bundle is in `dsh.profile.bundles` and `cordis.patch.yml` is intact
+- **The Desktop app does not list the plugin**: Web and Desktop are separate profiles; install it again in Desktop (Option 1)
+- **`/dsh-pomodoro/state` returns 404 (Web only)**: the Host half did not load. Check the symlink and bundle list, and confirm you restarted `dsh web`
 - **`Cannot find module 'dsh-pomodoro-pet'`**: the symlink or `link:` path is wrong; inspect `~/.dsh/profiles/web/node_modules/`
-- **Changes to `client.js` do not appear**: the client bundle is cached; hard-refresh. Host-side changes always require a `dsh web` restart
-- **No desktop notification**: grant the browser permission; background-tab notifications also depend on browser policy
+- **Changes to `client.js` do not appear**: the client bundle is cached; hard-refresh. Host-side changes always need a restart (`dsh web`, or quit and reopen Desktop)
+- **No desktop notification**: Web needs browser permission, and background tabs also depend on browser policy; Desktop grants permission automatically, but OS toast delivery depends on macOS signing / the Windows AUMID / a Linux notification daemon, so dev builds may stay silent (the chime still plays)
+- **Does the timer keep running after I close the Desktop window?**: Yes. Closing hides the window and the Host keeps running, settling by deadline; fully quitting loses that round's reminder, but settlement is reconciled on the next launch
 - **Theme / language does not follow DSH**: the plugin follows DSH's Settings → General → Appearance / Language; restart DSH after changing them
 
 </details>
 
 ## Data and uninstall
 
-- Data folder: `$DSH_HOME/storages/pomodoro_pet/` (the pre-0.9.5 single file `pomodoro_pet.json` is auto-migrated once and kept as a backup)
-- Migration: stop DSH, copy that file to the same path on the new machine, start DSH
-- Uninstall: remove `dsh-pomodoro-pet` from `~/.dsh/profiles/web/package.json`, delete the 4 patch lines from `cordis.patch.yml`, remove the `node_modules` symlink, restart `dsh web`
-- Uninstalling keeps your data; delete the JSON file above to reset everything
+- Data folder: `$DSH_HOME/storages/pomodoro_pet/` (the pre-0.9.5 single file `pomodoro_pet.json` is auto-migrated once and kept as a backup). Web and Desktop share this data, but do not run both Hosts at the same time
+- Device preferences (pet position / collapsed state / seen settlement) live in browser `localStorage`, isolated per page origin: Web is `http://127.0.0.1:<port>`, Desktop is `dsh-app://app`; they do not sync
+- Migration: stop DSH, copy that folder to the same path on the new machine, start DSH
+- Uninstall (Web): use the Plugins page, or remove `dsh-pomodoro-pet` from `~/.dsh/profiles/web/package.json` and `dsh.profile.bundles`, then restart `dsh web`
+- Uninstall (Desktop): use **Plugins → Installed** in the app, or fully quit it and run `dsh plugin --profile desktop remove dsh-pomodoro-pet`
+- Uninstalling keeps your data; delete the data folder above to reset everything
 
 ## Development
 

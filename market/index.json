@@ -46,8 +46,8 @@
         "zh": "番茄精灵"
       },
       "description": {
-        "en": "A focus companion for DSH Web: pomodoro timer, four-quadrant tasks, a pet that grows with your focus, stats, achievements, and an agent tool.",
-        "zh": "DSH Web 的专注伙伴：番茄钟、四象限任务、随专注成长的桌宠、统计与成就，以及 Agent 工具。"
+        "en": "A focus companion for DSH Web / Desktop: pomodoro timer, four-quadrant tasks, a pet that grows with your focus, stats, achievements, and an agent tool.",
+        "zh": "DSH Web / Desktop 的专注伙伴：番茄钟、四象限任务、随专注成长的桌宠、统计与成就，以及 Agent 工具。"
       },
       "icon": "icons/icon.svg",
       "author": "chris",

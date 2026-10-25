@@ -633,10 +633,21 @@ window.__ModuleLoader__.load({
 }
 .pp-app,.pp-pet-host{transition:background-color .2s ease,color .2s ease}
 .pp-app{background:var(--pp-bg);color:var(--pp-ink);font-size:14px;line-height:1.5;
-  height:100vh;height:100dvh;max-height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+  /* DSH Desktop pads the frame by the Windows caption / macOS title strip; follow the
+     slot's height instead of the raw viewport so the bottom rows can never overflow. */
+  height:100%;max-height:100%;min-height:0;flex:1 1 auto;
+  overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
 .pp-app button,.pp-app input,.pp-app select{font:inherit}
 .pp-app button{cursor:pointer}
 .pp-app main{max-width:1600px;margin:0 auto;padding:8px 40px 44px}
+/* DSH Desktop (macOS hiddenInset): window chrome floats over the main panel's top
+   strip, and a collapsed sidebar mounts traffic lights plus controls over its
+   top-left corner. DSH publishes both insets; pad the page the way its own entry
+   pages do so the 🍅 header never lands under the chrome. Windows clears its
+   caption through the frame padding, so this stays darwin-only. */
+html[data-platform='darwin'] .pp-app main{
+  padding-top:calc(8px + var(--dsh-frame-top-clearance, 0px));
+  padding-inline-start:max(40px, var(--dsh-frame-leading-clearance, 0px))}
 /* ---- header ---- */
 .pp-header{height:88px;display:grid;grid-template-columns:1fr minmax(360px,560px) 1fr;align-items:center;gap:22px;border-bottom:1px solid var(--pp-line)}
 .pp-brand{display:flex;align-items:center;gap:12px}
@@ -2260,7 +2271,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         return () => window.removeEventListener('keydown', onKey, true)
       }, [snap?.running?.id, snap?.running?.status, snap?.running?.revision, openId, helpOpen])
 
-      return h('div', { className: 'pp-app', 'data-theme': theme.effective, style: { fontFamily: FONT, color: 'var(--pp-ink)', minHeight: '100vh' } },
+      return h('div', { className: 'pp-app', 'data-theme': theme.effective, style: { fontFamily: FONT, color: 'var(--pp-ink)' } },
         h('main', null,
           // 顶部 header: 品牌 | 导航 | 档案
           h('header', { className: 'pp-header' },

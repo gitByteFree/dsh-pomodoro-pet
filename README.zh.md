@@ -1,10 +1,10 @@
 # 🍅 番茄精灵（Pomodoro Pet）
 
-DSH Web 的专注小搭档：一个番茄钟、一套四象限任务，和一只跟着你专注一起长大的桌宠。
+DSH Web / Desktop 的专注小搭档：一个番茄钟、一套四象限任务，和一只跟着你专注一起长大的桌宠。
 
 ![番茄精灵专注面板](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/focus-panel.png)
 
-**版本 0.9.5** · 需要 DSH Web `0.2.1-rc.2` 及以上 · 零 npm 依赖 · 数据只存本机
+**版本 0.9.5** · 需要 DSH Web / Desktop `0.2.1-rc.2` 及以上 · 零 npm 依赖 · 数据只存本机
 
 [English](README.md) | **中文**
 
@@ -84,19 +84,30 @@ DSH Web 的专注小搭档：一个番茄钟、一套四象限任务，和一只
 
 ## 安装
 
-安装前需要：**DSH Web**（`0.2.1-rc.2` 及以上），以及一个支持 `localStorage` 的现代浏览器。插件本身零 npm 依赖，不需要构建。
+安装前需要：**DSH Web 或 DSH Desktop**（`0.2.1-rc.2` 及以上）。插件本身零 npm 依赖，不需要构建。
 
-### 方式一：从 npm 安装（最快）
+> Web 和桌面端是两个独立的 profile：Web 用 `~/.dsh/profiles/web`，桌面端独占 `~/.dsh/profiles/desktop`。在一边装了，另一边不会自动出现；两边的专注数据（`$DSH_HOME/storages/pomodoro_pet/`）是同一份。
+
+### 方式一：从插件页安装（推荐，Web / Desktop 通用）
 
 插件已发布到 npm，包名 `dsh-pomodoro-pet`。
 
-在 DSH 里打开 **插件 → 已安装 → 添加插件**，输入 `dsh-pomodoro-pet`，点 **安装**。或在终端执行：
+**Web**：打开 **插件 → 已安装 → 添加插件**，输入 `dsh-pomodoro-pet`，点 **安装**；装好后重启 `dsh web` 并刷新浏览器。这条路径不受插件市场索引缓存影响。
+
+**Desktop**：打开桌面端左侧 **Plugins → Add plugin**，输入 `dsh-pomodoro-pet` → **Install** → **Enable now**。正常情况热生效，不用重启；若提示需要重启，完全退出桌面端再打开。
+
+也可以在终端执行（注意两者不能混用）：
 
 ```bash
+# Web profile（npm 安装的 dsh 即可）
 dsh plugin add dsh-pomodoro-pet
+
+# Desktop profile：需使用桌面端自带的 dsh 命令（应用菜单 → Manage dsh Command… → Install），
+# 并在执行前完全退出桌面端
+dsh plugin --profile desktop add dsh-pomodoro-pet
 ```
 
-然后重启 `dsh web` 并刷新浏览器。这条路径不受插件市场索引缓存影响。
+> npm 全局安装的 `dsh` 不能修改桌面端 profile；桌面端也不要把插件装进 `profiles/web`。
 
 ### 方式二：从插件市场安装
 
@@ -108,7 +119,7 @@ dsh plugin add dsh-pomodoro-pet
    ```
 
 3. 找到 **番茄精灵 / Pomodoro Pet**，点击安装
-4. 重启 `dsh web`，然后刷新浏览器
+4. 重启 `dsh web` 并刷新浏览器（桌面端：启用实验性插件市场后在 Discover 添加同一索引，安装后点 **Enable now**）
 
 > 索引走 jsDelivr 分发（插件市场要求直接返回 `200` 且不重定向）。新版本发布后可能有最多 12 小时的缓存，稍等即可。网络可直连 GitHub 时，也可以用 `https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json`。
 
@@ -120,7 +131,7 @@ cd dsh-pomodoro-pet
 ./install.sh                # 默认装到 ~/dsh-plugins，profile 为 web
 ```
 
-脚本会自动完成「拷贝目录 → 注册到 profile → 建软链 → 注入 patch」，重复执行也安全。装完重启 DSH：
+脚本只用于 **Web profile**：会自动完成「拷贝目录 → 注册到 profile → 建软链」；插件自带的 `cordis.patch.yml` 由 DSH 自动应用，脚本不再改 profile patch。重复执行也安全，并会拒绝保留给桌面端的 `desktop` profile。桌面端请用方式一。装完重启 DSH：
 
 ```bash
 # 在运行 dsh web 的终端按 Ctrl+C，再重新启动
@@ -150,16 +161,9 @@ dsh web
    ln -sfn ~/dsh-plugins/dsh-pomodoro-pet ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet
    ```
 
-4. 在 `~/.dsh/profiles/web/cordis.patch.yml` 追加：
+4. 重启 `dsh web`，刷新浏览器
 
-   ```yaml
-   - insert:
-       - id: pomodoro-pet
-         name: 'dsh-pomodoro-pet'
-         config: {}
-   ```
-
-5. 重启 `dsh web`，刷新浏览器
+> DSH `0.2.1-rc.2` 起会自动应用插件自带的 `cordis.patch.yml`（`dsh.bundle.patch`），**不再需要**手写 `insert` 行。旧教程里加过的 4 行可以删掉；重复的 row id 会被 Loader 按最后一条去重，留着不会崩，但没必要。
 
 更详细的逐步说明见 [INSTALL.md](https://github.com/gitByteFree/dsh-pomodoro-pet/blob/main/INSTALL.md)。
 
@@ -167,11 +171,15 @@ dsh web
 
 ### 验证装好了没
 
+**Web**：
+
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/state
 ```
 
 返回 `200` 说明 Host 端加载成功。`3080` 是 `dsh web` 的默认端口；如果你用 `--port` 启动过（例如 `8080`），换成实际端口。
+
+**Desktop**：桌面端 Host 端口由系统分配，且请求需要应用注入的 Cookie，直接 `curl` 会返回 `401`——这是插件的信任围栏在正常工作，不是装坏了。直接在界面里确认即可。
 
 界面上应该看到：
 
@@ -210,21 +218,25 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/stat
 <details>
 <summary>展开排查清单</summary>
 
-- **侧边栏没有图标 / 面板空白**：先看 `dsh web` 启动日志里有没有 `pomodoro-pet` 报错；再确认 `cordis.patch.yml` 缩进正确、bundle 已加入 `dsh.profile.bundles`
-- **`/dsh-pomodoro/state` 返回 404**：Host 端没加载。检查软链、bundle 列表，并确认重启过 `dsh web`
+- **侧边栏没有图标 / 面板空白**：先看启动日志里有没有 `pomodoro-pet` 报错；再确认 bundle 已加入 `dsh.profile.bundles`、`cordis.patch.yml` 没写坏
+- **桌面端插件列表里看不到**：Web 和桌面端是两个 profile，需要按「方式一」在桌面端再装一次
+- **`/dsh-pomodoro/state` 返回 404（仅 Web）**：Host 端没加载。检查软链、bundle 列表，并确认重启过 `dsh web`
 - **`Cannot find module 'dsh-pomodoro-pet'`**：软链或 `link:` 路径不对，检查 `~/.dsh/profiles/web/node_modules/`
-- **改了 `client.js` 不生效**：客户端 bundle 有缓存，强制刷新；Host 端文件改动必须重启 `dsh web`
-- **收不到桌面通知**：需要在浏览器里授权通知，后台标签页还受浏览器策略限制
+- **改了 `client.js` 不生效**：客户端 bundle 有缓存，强制刷新；Host 端文件改动必须重启（Web 重启 `dsh web`，桌面端完全退出再打开）
+- **收不到桌面通知**：Web 需要在浏览器里授权通知，后台标签页还受浏览器策略限制；桌面端权限自动授予，能否弹系统通知取决于 macOS 签名 / Windows AUMID / Linux 通知服务，开发版可能静默（有提示音兜底）
+- **桌面端关了窗口计时还在走吗**：在走。关窗只是隐藏，Host 继续运行、按截止时间结算；真正退出桌面端会丢本轮提醒，但下次启动会补结算
 - **主题 / 语言不跟随**：跟随 DSH 的「设置 → 通用 → 外观 / 语言」，改完重启 DSH
 
 </details>
 
 ## 数据与卸载
 
-- 数据目录：`$DSH_HOME/storages/pomodoro_pet/`（0.9.5 之前的单文件 `pomodoro_pet.json` 会自动迁移一次并保留备份）
-- 迁移：关掉 DSH，把该文件拷到新机器同一路径，再启动即可
-- 卸载：从 `~/.dsh/profiles/web/package.json` 移除 `dsh-pomodoro-pet`，删掉 `cordis.patch.yml` 里对应的 4 行，删除 `node_modules` 软链，重启 `dsh web`
-- 卸载不会删除数据；要清空就删除上面的 JSON 文件
+- 数据目录：`$DSH_HOME/storages/pomodoro_pet/`（0.9.5 之前的单文件 `pomodoro_pet.json` 会自动迁移一次并保留备份）。Web 和桌面端共用这份数据，但**不要同时开两个 Host 写它**
+- 设备偏好（桌宠位置 / 收纳状态 / 结算已读）存在浏览器 `localStorage`，按页面 origin 隔离：Web 是 `http://127.0.0.1:<port>`，桌面端是 `dsh-app://app`，两边不互通
+- 迁移：关掉 DSH，把该目录拷到新机器同一路径，再启动即可
+- 卸载（Web）：在插件页卸载，或从 `~/.dsh/profiles/web/package.json` 与 `dsh.profile.bundles` 里移除 `dsh-pomodoro-pet` 后重启 `dsh web`
+- 卸载（Desktop）：在桌面端 **Plugins → Installed** 里卸载，或完全退出桌面端后执行 `dsh plugin --profile desktop remove dsh-pomodoro-pet`
+- 卸载不会删除数据；要清空就删除上面的数据目录
 
 ## 开发者
 

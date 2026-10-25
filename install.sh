@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# 番茄精灵（Pomodoro Pet）一键安装脚本
+# 番茄精灵（Pomodoro Pet）一键安装脚本（仅 Web profile）
 #
 #   ./install.sh                    # 安装到 ~/.dsh/profiles/web
 #   ./install.sh --profile headless # 指定 profile 名
 #   ./install.sh --dest ~/dsh-plugins --profile web
 #
-# 会做：拷插件目录 → 写 profile package.json（dependencies + bundles）
-#       → 建软链 → 往 cordis.patch.yml 插入插件行
+# 会做：拷插件目录 → 写 profile package.json（dependencies + bundles）→ 建软链
+#       插件自带的 cordis.patch.yml（dsh.bundle.patch）由 DSH 自动应用，无需手写 patch。
 # 幂等：重复跑不会产生重复条目（会就地更新路径）。
 set -euo pipefail
 
@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
     --profile) PROFILE="${2:?--profile 需要参数}"; shift 2 ;;
     --dest)    DEST="${2:?--dest 需要参数}"; shift 2 ;;
     --home)    DSH_HOME_DIR="${2:?--home 需要参数}"; shift 2 ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     *) echo "未知参数: $1" >&2; exit 1 ;;
   esac
 done
@@ -33,6 +33,12 @@ PROFILE_DIR="$DSH_HOME_DIR/profiles/$PROFILE"
 say()  { printf '\033[36m▸\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m✗\033[0m %s\n' "$*" >&2; exit 1; }
+
+# desktop profile 由 DSH Desktop（Electron）独占，脚本不能碰
+PROFILE_LC="$(printf '%s' "$PROFILE" | tr '[:upper:]' '[:lower:]')"
+if [[ "$PROFILE_LC" == 'desktop' ]]; then
+  die 'desktop profile 由 DSH Desktop 独占：请在桌面端 Plugins 页安装，或使用桌面端自带的 dsh 命令管理。'
+fi
 
 # ---------- 0. 前置检查 ----------
 command -v dsh >/dev/null 2>&1 || say '警告: PATH 里找不到 dsh 命令，安装脚本会继续，但装完你可能无法启动。'
@@ -101,21 +107,14 @@ if [[ -L "$PROFILE_DIR/node_modules/@local/$PKG_DIR_NAME" || -e "$PROFILE_DIR/no
 fi
 ok "软链: $PROFILE_DIR/node_modules/$PKG_DIR_NAME"
 
-# ---------- 5. 插入 cordis.patch.yml ----------
+# ---------- 5. 检查 profile patch ----------
+# DSH 0.2.1-rc.2 起会自动应用插件自带的 dsh.bundle.patch（本仓库 cordis.patch.yml），
+# 所以这里不再写入 insert 行；旧版安装残留的行只是冗余（Loader 按 id 去重）。
 PATCH="$PROFILE_DIR/cordis.patch.yml"
-say "更新 $PATCH"
 if [[ -f "$PATCH" ]] && grep -q "id: pomodoro-pet" "$PATCH"; then
-  ok 'patch 里已有 pomodoro-pet，跳过'
+  say "检测到 $PATCH 里仍有旧的 pomodoro-pet 行（已不再需要，可手动删除）"
 else
-  {
-    printf '\n# 番茄精灵（Pomodoro Pet）— 由 install.sh 插入\n'
-    printf -- '- insert:\n'
-    printf '    - id: pomodoro-pet\n'
-    printf "      name: '%s'\n" "$PLUGIN_NAME"
-    printf '      config: {}\n'
-  } >> "$PATCH"
-  [[ -f "$PATCH" ]] || die '写 patch 失败'
-  ok 'patch 已追加'
+  ok '无需修改 profile cordis.patch.yml（bundle patch 自动生效）'
 fi
 
 # ---------- 6. 提示重启 ----------
@@ -132,6 +131,10 @@ $(printf '\033[33m下一步：重启 DSH（Host 端代码必须重启才会加�
   dsh web
 
 然后浏览器刷新 http://127.0.0.1:3080 ，侧边栏应出现 🍅「番茄精灵」。
+
+  # Desktop 端不跑本脚本：请在桌面端 Plugins → Add plugin 安装；
+  # 命令行方式（需完全退出桌面端）：
+  #   dsh plugin --profile desktop add /绝对路径/dsh-pomodoro-pet
 
   # 3080 是 dsh web 默认端口。若用 --port 启动过，请把上面的端口
   # 和下面验证命令里的端口一并替换成实际值（例如 8080）。

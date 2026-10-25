@@ -3,7 +3,7 @@
 Technical details for developers and tool authors. User-facing docs: [README.md](README.md) / [README.zh.md](README.zh.md). Install walkthrough: [INSTALL.md](INSTALL.md).
 
 - Version: **0.9.5**
-- Runtime: DSH Web `0.2.1-rc.2` or newer
+- Runtime: DSH Web / Desktop `0.2.1-rc.2` or newer
 - Dependencies: none — plain ESM on the Host, injected React UI on the Client
 
 ## Runtime requirements
@@ -17,6 +17,8 @@ The plugin needs these services from the DSH profile:
 | Client | `slots`, `locale` |
 
 The stock `web` profile provides all of them. If `connection` is missing, every HTTP route fails closed with `503` rather than serving unauthenticated requests.
+
+DSH Desktop runs the same Web client inside Electron: its profile is initialized from the `web` template, so the same services are mounted and `dsh.client.platform: "web"` is correct. Keep every Client URL document-relative (`/dsh-pomodoro/...`): Desktop forwards unknown `dsh-app://app/*` paths to its authenticated Host on an OS-assigned port, serves `/assets/*` from its own bundle, and does not forward page-initiated WebSocket upgrades — use SSE plus `fetch`.
 
 ## File map
 
