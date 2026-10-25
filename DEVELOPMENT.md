@@ -98,7 +98,7 @@ Implementation rules:
 
 The daily agent bucket (`settings` key `_agent_<YYYY-MM-DD>`) additionally stores `questions`, `approvals`, and `waitMs`; older buckets without those fields read as 0.
 
-The Client renders the same list three ways: the `pomodoro-pet-wait` overlay banner (flashing, dismissible), a `ContextBar` chip, and an `AgentWaitCard` in the Focus tab. All three call `uiWorkspace.openSession(sessionId)`; desktop notifications use `tag: pp-wait-<sessionId>` and also open the session on click. Device preferences: `pp-wait-alert` (in-app banner, default on) and `pp-wait-notify` (desktop notification, default on). The overlay is excluded from animation only when `prefers-reduced-motion` or `animationEnabled=false`, matching the rest of the UI.
+The Client renders the same list three ways: a flashing speech bubble anchored above the pet capsule (dismissible; rendered inside the existing `pomodoro-pet-overlay` entry, not a separate top-level overlay), a `ContextBar` chip, and an `AgentWaitCard` in the Focus tab. While the bubble is active the pet capsule gets a ❗ badge and a wiggle animation (all of it disabled by `prefers-reduced-motion` or `animationEnabled=false`). All three call `uiWorkspace.openSession(sessionId)`; desktop notifications use `tag: pp-wait-<sessionId>` and also open the session on click. Device preferences: `pp-wait-alert` (in-app bubble, default on) and `pp-wait-notify` (desktop notification, default on).
 
 ## HTTP API
 

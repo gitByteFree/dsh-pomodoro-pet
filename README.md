@@ -71,8 +71,8 @@ The plugin exposes a `pomodoro_pet` tool to the agent:
 
 The pet is also a read-only status board for DSH sessions:
 
-- When another session is waiting for your **approval** or **answer**, a flashing banner appears on top of the page (plus a panel chip, a "needs you" card, and an optional desktop notification)
-- Click the banner/chip/card/notification to jump straight to that session
+- When another session is waiting for your **approval** or **answer**, a flashing speech bubble pops up above the pet capsule (the pet wags with a ❗ badge); there is also a panel chip, a "needs you" card, and an optional desktop notification
+- Click the bubble/chip/card/notification to jump straight to that session
 - This is observation only: the plugin never answers for you, never changes the agent's prompt, tools, or workflow, and never writes to a session
 
 Just ask in a DSH conversation:

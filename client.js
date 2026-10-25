@@ -948,7 +948,13 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
 .pp-agent-thought.pill{position:absolute;right:6px;top:2px;font-size:10px;letter-spacing:1px}
 @keyframes pp-agent-think{0%,100%{transform:translateY(0);opacity:.55}50%{transform:translateY(-2px);opacity:1}}
 /* ---- v0.10 Agent waiting alerts (read-only observation) ---- */
-.pp-wait-alert{position:fixed;top:var(--dsh-frame-overlay-top,40px);left:50%;transform:translateX(-50%);z-index:1100;pointer-events:auto;display:flex;align-items:center;gap:8px;max-width:min(92vw,560px);padding:8px 8px 8px 12px;border-radius:14px;border:1.5px solid #e67e22;background:#fff6e8;color:#8a4b0f;box-shadow:0 10px 32px rgba(230,126,34,.28);font-family:${FONT};animation:pp-wait-flash 1.4s ease-in-out infinite}
+.pp-wait-alert{position:absolute;z-index:3;pointer-events:auto;display:flex;align-items:center;gap:8px;width:max-content;max-width:min(340px,72vw);padding:8px 8px 8px 12px;border-radius:14px;border:1.5px solid #e67e22;background:#fff6e8;color:#8a4b0f;box-shadow:0 10px 32px rgba(230,126,34,.28);font:inherit;animation:pp-wait-flash 1.4s ease-in-out infinite}
+.pp-petpill.pp-pet-agentwait{box-shadow:0 0 0 3px rgba(230,126,34,.28),0 6px 18px rgba(230,126,34,.30)}
+.pp-petpill.pp-pet-agentwait svg{animation:pp-pet-agentwait-wiggle 1.5s ease-in-out infinite;transform-origin:50% 85%}
+.pp-petdot-wrap.pp-pet-agentwait .pp-petdot{box-shadow:0 0 0 3px rgba(230,126,34,.30),0 0 16px rgba(230,126,34,.45)}
+.pp-pet-alertmark{position:absolute;top:-7px;right:-7px;z-index:4;display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#e67e22;color:#fff;font-size:11px;font-weight:800;box-shadow:0 2px 8px rgba(230,126,34,.45);animation:pp-pet-alertmark 1.1s ease-in-out infinite}
+@keyframes pp-pet-agentwait-wiggle{0%,100%{transform:rotate(0) translateY(0)}20%{transform:rotate(-4deg) translateY(-1px)}40%{transform:rotate(4deg) translateY(0)}60%{transform:rotate(-2deg) translateY(-1px)}80%{transform:rotate(2deg) translateY(0)}}
+@keyframes pp-pet-alertmark{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-2px) scale(1.12)}}
 .pp-wait-main{display:flex;align-items:center;gap:8px;flex:1;min-width:0;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:3px 4px;text-align:left}
 .pp-wait-icon{font-size:15px;flex-shrink:0}
 .pp-wait-text{font-size:12.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1663,8 +1669,8 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       )
     }
 
-    /** Global flashing banner for sessions waiting on user input/approval. */
-    function WaitingAlert() {
+    /** Flashing speech bubble above the pet capsule for sessions waiting on the user. */
+    function WaitingAlert({ pos, collapsed }) {
       ensureStyles()
       const agentCtx = useAgentContext()
       const prefs = usePrefs()
@@ -1683,7 +1689,21 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const more = list.length - 1
       const kindText = top.kind === 'approval' ? tr('Agent 在等你确认') : tr('Agent 有问题等你回答')
       const name = top.label || top.cwdName || tr('未命名会话')
-      return h('div', { className: 'pp-wait-alert', role: 'alert', 'aria-live': 'assertive' },
+      // Anchor above the capsule; near the viewport edge flip horizontally and
+      // near the top flip below so the bubble always stays readable.
+      const vw = typeof window !== 'undefined' ? (window.innerWidth || 1200) : 1200
+      const below = Number(pos?.y) >= 0 && Number(pos?.y) < 170
+      const alignRight = Number(pos?.x) > Math.min(420, vw * 0.45)
+      const anchor = {
+        ...(below ? { top: 'calc(100% + 9px)' } : { bottom: 'calc(100% + 9px)' }),
+        ...(alignRight ? { right: 0 } : { left: 0 }),
+      }
+      return h('div', {
+        className: `pp-wait-alert${below ? ' below' : ''}${collapsed ? ' compact' : ''}`,
+        role: 'alert', 'aria-live': 'assertive', style: anchor,
+        onPointerDown: e => e.stopPropagation(),
+        onClick: e => e.stopPropagation(),
+      },
         h('button', {
           type: 'button', className: 'pp-wait-main', title: tr('打开会话'),
           onClick: () => openAgentSession(top.sessionId),
@@ -2201,6 +2221,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const r = snap.running
       const status = r?.status
       const busy = status === 'focus' || status === 'break' || status === 'longBreak'
+      const waitingNotice = !!prefs.waitAlert && !!agentCtx?.agent?.waiting?.active
       const scale = Math.max(0.5, Math.min(2, Number(snap.settings.petScale) || 1))
       // §4.1 不变式: 已暂停 = endsAt==null && remainingMs!=null（引擎 PAUSE 不改 status）
       const pausedNow = !!r && r.endsAt == null && r.remainingMs != null
@@ -2287,9 +2308,9 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
           role: 'button', tabIndex: 0, 'aria-label': label, 'aria-live': 'polite',
           onPointerDown, onPointerMove, onPointerUp, onKeyDown: onKey,
           onClick: onPetClick, onDoubleClick: onPetDoubleClick,
-          className: collapsed
+          className: (collapsed
             ? 'pp-petdot-wrap'
-            : `pp-petpill${Date.now() - popAt < 620 ? ' pp-pet-bounce' : ''}`,
+            : `pp-petpill${Date.now() - popAt < 620 ? ' pp-pet-bounce' : ''}`) + (waitingNotice ? ' pp-pet-agentwait' : ''),
           title: collapsed ? '点击展开番茄精灵' : '拖动移动 · 单击回应 · 双击互动（连点有惊喜）',
           style: collapsed
             ? { position: 'relative' }
@@ -2297,7 +2318,8 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
           onFocus: e => { e.currentTarget.style.boxShadow = '0 0 0 2px #f15f50' },
           onBlur: e => { e.currentTarget.style.boxShadow = '' },
         },
-          petBubble && h('div', {
+          waitingNotice && h('span', { className: 'pp-pet-alertmark', 'aria-hidden': true }, '❗'),
+          petBubble && !waitingNotice && h('div', {
             className: `pp-pet-bubble${bubbleTone !== 'normal' ? ` ${bubbleTone}` : ''}`,
             role: 'status',
           }, petBubble),
@@ -2323,6 +2345,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
                   ctl('收纳桌宠', '—', () => toggleCollapsed(true))),
               ],
         ),
+        waitingNotice && h(WaitingAlert, { pos, collapsed }),
         openId && h(SettlementOverlay, { snap, refresh, onClose: close }),
       )
     }
@@ -3958,7 +3981,6 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
      * 且语言切换时随 useLocaleRev() 自动重渲染。 */
     const PomodoroPanelI18n = withI18n((props) => h(PomodoroPanel, props))
     const PetOverlayI18n = withI18n((props) => h(PetOverlay, props))
-    const WaitingAlertI18n = withI18n((props) => h(WaitingAlert, props))
 
     /* ---- 测试导出（SSR 冒烟用；不影响运行） ---- */
     const StatsTabI18n = withI18n((props) => h(StatsTab, props))
@@ -4008,12 +4030,6 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
           }, PetOverlayI18n))
           console.log('pomodoro-pet[client]: shell.overlay registered')
         } catch (error) { console.error('pomodoro-pet[client]: shell.overlay FAILED', error) }
-        try {
-          ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-            name: 'shell.overlay', id: 'pomodoro-pet-wait', order: 210,
-          }, WaitingAlertI18n))
-          console.log('pomodoro-pet[client]: waiting alert overlay registered')
-        } catch (error) { console.error('pomodoro-pet[client]: waiting alert overlay FAILED', error) }
         try {
           ctx.slots.inject('main', () => ctx.slots.register({
             name: 'main', key: 'pomodoro-pet', locale: 'pomodoro.pet',
