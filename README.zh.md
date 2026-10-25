@@ -83,12 +83,14 @@ cd dsh-pomodoro-pet
 DSH 本身不内置索引源。本仓库发布一个 format-1 索引：
 
 ```text
-https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json
+https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/market/index.json
 ```
 
 1. 打开 **插件** 页，启用实验性的 **自定义插件索引** bundle，进入 **发现（Discover）** 标签。
 2. 选择 **添加索引源**，粘贴上面的 URL。
 3. 选中 Pomodoro Pet 并安装列表中的版本。DSH 会按索引记录的 commit 固定安装这个 Git 仓库。
+
+市场要求索引直接返回 `200` 且不重定向，因此索引通过 jsDelivr 分发；网络可直连 GitHub 时，`https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json` 提供同一份文件。两个地址都跟随 `main` 分支；jsDelivr 在边缘节点缓存 12 小时，浏览器端缓存更久，因此新版本可能需要一段时间才会出现。每个列出的版本都固定到不可变的 commit。
 
 由于本包是本地私有包，索引条目使用 Git 源，不发布到 npm。
 

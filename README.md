@@ -83,12 +83,14 @@ The script copies the plugin, adds it to the profile's `dependencies` and `dsh.p
 DSH ships no built-in index source. This repository publishes a format-1 index:
 
 ```text
-https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json
+https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/market/index.json
 ```
 
 1. Open **Plugins**, enable the experimental **Custom plugin indexes** bundle, and open the **Discover** tab.
 2. Choose **Add index source** and paste the URL above.
 3. Select Pomodoro Pet and install the listed version. DSH pins this Git repository to the commit recorded in the index.
+
+The index is served through jsDelivr because the market requires a direct `200` without redirects. Where GitHub is reachable, `https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json` serves the same file. Both URLs follow `main`; jsDelivr caches the branch for 12 hours at the edge and browsers may reuse their copy for longer, so a new release can take a while to appear. Every listed version pins an immutable commit.
 
 The index entry is a Git source because this package is local and private; nothing is published to npm.
 
