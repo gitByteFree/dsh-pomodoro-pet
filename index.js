@@ -66,12 +66,7 @@ function objSchema(fields) {
   }
 }
 
-const domainSpec = {
-  // single 布局的 JSON 后端要求存储版本严格等于 spec version（compatibleVersions
-  // 仅对 per-record 布局生效），因此保持 version 1，v0.4 新字段由 loadState
-  // 迁移默认值（§10.3 的兼容策略在 single 布局下等价于「字段级可选+加载补齐」）。
-  name: 'pomodoro_pet', version: 1,
-  tables: {
+const domainTables = {
     pets: { valueSchema: objSchema({ exp: 'number', level: 'number', mood: 'number', updatedAt: 'number', rounds: 'number', outfitId: ['string', 'object'] }) },
     sessions: { valueSchema: objSchema({ status: 'string', startedAt: 'number', endsAt: ['number', 'object'], focusMinutes: 'number', revision: 'number' }) },
     days: { valueSchema: objSchema({ completed: 'number', focusMinutes: 'number', streak: 'number', expGained: 'number', hours: ['string', 'object'], moodEnd: ['number', 'object'] }) },
@@ -83,9 +78,19 @@ const domainSpec = {
     inventory: { valueSchema: objSchema({ count: 'number', firstObtainedAt: 'number' }) },
     // v0.4 (D16/§10.2): proposal loop + audit trail.
     proposals: { valueSchema: objSchema({ type: 'string', payload: 'string', status: 'string', createdAt: 'number', resolvedAt: ['number', 'object'] }) },
-    audit_log: { valueSchema: objSchema({ toolAction: 'string', params: 'string', result: 'string', at: 'number' }) },
-  },
+  audit_log: { valueSchema: objSchema({ toolAction: 'string', params: 'string', result: 'string', at: 'number' }) },
 }
+
+/**
+ * Storage layout: `per-record` writes one file per row, so a timer tick no
+ * longer republishes a multi-megabyte document; that is the difference
+ * between ~2ms and ~35ms per write once a year of history has accumulated.
+ * Version stays 1: the storage backend's per-record unit bootstraps an empty
+ * tree from the legacy 0.9.4 whole-unit file (`<root>/pomodoro_pet.json`)
+ * automatically on first open and leaves that file untouched as a backup, so
+ * this switch needs no plugin-side migration code.
+ */
+const domainSpec = { name: 'pomodoro_pet', version: 1, layout: 'per-record', tables: domainTables }
 
 /* ---------------- helpers ---------------- */
 
@@ -238,6 +243,7 @@ export function apply(ctx, config) {
   }
 
   let domain
+
   let ready = ctx.storageDomain.open(domainSpec).then(d => { domain = d; return d })
 
   /* Engine state is loaded from tables on boot and re-folded on every write. */

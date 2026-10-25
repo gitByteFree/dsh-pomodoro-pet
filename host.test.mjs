@@ -124,6 +124,7 @@ function makeRes() {
     write(chunk) { this.chunks.push(String(chunk)); return true },
     end(chunk) { if (chunk !== undefined && chunk !== null) this.chunks.push(String(chunk)); this.finished = true },
     json() { return JSON.parse(this.chunks.join('')) },
+    get body() { return this.chunks.join('') },
   }
   return res
 }
@@ -142,7 +143,7 @@ async function callRoute(harness, path, options = {}) {
 
 const getState = async (harness) => {
   const res = await callRoute(harness, '/dsh-pomodoro/state')
-  assert.equal(res.statusCode, 200)
+  assert.equal(res.statusCode, 200, res.body)
   return res.json()
 }
 
