@@ -78,7 +78,7 @@
           "source": {
             "type": "git",
             "url": "https://github.com/gitByteFree/dsh-pomodoro-pet",
-            "commit": "dce4d90530e2aed05f537594903645236e5dea90"
+            "commit": "dbede81dd013975599f36f267ddfaf8ed21c9290"
           },
           "engines": {
             "dsh": ">=0.2.1-rc.2"
