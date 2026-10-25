@@ -40,7 +40,7 @@
   },
   "plugins": [
     {
-      "name": "@local/dsh-pomodoro-pet",
+      "name": "dsh-pomodoro-pet",
       "title": {
         "en": "Pomodoro Pet",
         "zh": "番茄精灵"

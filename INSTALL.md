@@ -88,7 +88,7 @@ cp -r dsh-pomodoro-pet ~/dsh-plugins/
 ```json
 {
   "dependencies": {
-    "@local/dsh-pomodoro-pet": "link:/home/<你的用户名>/dsh-plugins/dsh-pomodoro-pet"
+    "dsh-pomodoro-pet": "link:/home/<你的用户名>/dsh-plugins/dsh-pomodoro-pet"
   }
 }
 ```
@@ -100,7 +100,7 @@ cp -r dsh-pomodoro-pet ~/dsh-plugins/
   "profile": {
     "bundles": [
       ... 原有的 bundle ...,
-      "@local/dsh-pomodoro-pet"
+      "dsh-pomodoro-pet"
     ]
   }
 }
@@ -110,8 +110,8 @@ cp -r dsh-pomodoro-pet ~/dsh-plugins/
 
 ```bash
 cd ~/.dsh/profiles/web
-mkdir -p node_modules/@local
-ln -sfn ~/dsh-plugins/dsh-pomodoro-pet node_modules/@local/dsh-pomodoro-pet
+mkdir -p node_modules
+ln -sfn ~/dsh-plugins/dsh-pomodoro-pet node_modules/dsh-pomodoro-pet
 npm install --no-audit --no-fund     # 或 pnpm install / yarn install
 ```
 
@@ -125,7 +125,7 @@ npm install --no-audit --no-fund     # 或 pnpm install / yarn install
 ```yaml
 - insert:
     - id: pomodoro-pet
-      name: '@local/dsh-pomodoro-pet'
+      name: 'dsh-pomodoro-pet'
       config: {}
 ```
 
@@ -192,10 +192,10 @@ node --test engine.test.mjs v03-engine.test.mjs v04-engine.test.mjs agent-bridge
 先看 DSH 启动日志有没有 `pomodoro-pet` 相关报错；再确认 `cordis.patch.yml` 里那 4 行 YAML 缩进正确（`- insert:` 顶格，下面缩进两级）。
 
 **`/dsh-pomodoro/state` 返回 404**
-Host 半没加载。检查：`package.json` 的 `bundles` 是否包含 `@local/dsh-pomodoro-pet`；软链是否指向真实目录；是否重启过 `dsh web`。
+Host 半没加载。检查：`package.json` 的 `bundles` 是否包含 `dsh-pomodoro-pet`；软链是否指向真实目录；是否重启过 `dsh web`。
 
-**`Cannot find module '@local/dsh-pomodoro-pet'`**
-软链或 `link:` 路径不对。用 `ls -l ~/.dsh/profiles/web/node_modules/@local/` 确认指向存在。
+**`Cannot find module 'dsh-pomodoro-pet'`**
+软链或 `link:` 路径不对。用 `ls -l ~/.dsh/profiles/web/node_modules/` 确认指向存在。
 
 **改了 `client.js` 不生效**
 Client 半刷新页面即可；但 DSH 有客户端 bundle 缓存，必要时强制刷新（Ctrl+Shift+R）。
@@ -214,10 +214,10 @@ v0.9.1 起完全跟随 DSH：改「设置 → 通用 → 外观」即可，插�
 ## 七、卸载
 
 ```bash
-# 1) 从 bundles 数组移除 "@local/dsh-pomodoro-pet"
+# 1) 从 bundles 数组移除 "dsh-pomodoro-pet"
 # 2) 删掉 cordis.patch.yml 里的 pomodoro-pet 那 4 行
 # 3) 删软链
-rm ~/.dsh/profiles/web/node_modules/@local/dsh-pomodoro-pet
+rm ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet
 # 4) 重启 dsh web
 ```
 

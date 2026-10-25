@@ -40,7 +40,7 @@ cd dsh-pomodoro-pet
 # ./install.sh --home /path/to/.dsh --profile web
 ```
 
-The script copies the plugin, adds it to the profile's `dependencies` and `dsh.profile.bundles`, creates the `@local` symlink, and appends the plugin row to `cordis.patch.yml`. It is idempotent. Restart `dsh web` afterwards; Host-side code is only loaded at startup.
+The script copies the plugin, adds it to the profile's `dependencies` and `dsh.profile.bundles`, creates the `node_modules` symlink, and appends the plugin row to `cordis.patch.yml`. It is idempotent. Restart `dsh web` afterwards; Host-side code is only loaded at startup.
 
 ### Manual installation
 
@@ -50,11 +50,11 @@ The script copies the plugin, adds it to the profile's `dependencies` and `dsh.p
    ```json
    {
      "dependencies": {
-       "@local/dsh-pomodoro-pet": "link:/home/<you>/dsh-plugins/dsh-pomodoro-pet"
+       "dsh-pomodoro-pet": "link:/home/<you>/dsh-plugins/dsh-pomodoro-pet"
      },
      "dsh": {
        "profile": {
-         "bundles": ["...existing bundles...", "@local/dsh-pomodoro-pet"]
+         "bundles": ["...existing bundles...", "dsh-pomodoro-pet"]
        }
      }
    }
@@ -63,8 +63,8 @@ The script copies the plugin, adds it to the profile's `dependencies` and `dsh.p
 3. Link the package into the profile:
 
    ```bash
-   mkdir -p ~/.dsh/profiles/web/node_modules/@local
-   ln -sfn ~/dsh-plugins/dsh-pomodoro-pet ~/.dsh/profiles/web/node_modules/@local/dsh-pomodoro-pet
+   mkdir -p ~/.dsh/profiles/web/node_modules
+   ln -sfn ~/dsh-plugins/dsh-pomodoro-pet ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet
    ```
 
 4. Append the plugin row to `~/.dsh/profiles/web/cordis.patch.yml`:
@@ -72,7 +72,7 @@ The script copies the plugin, adds it to the profile's `dependencies` and `dsh.p
    ```yaml
    - insert:
        - id: pomodoro-pet
-         name: '@local/dsh-pomodoro-pet'
+         name: 'dsh-pomodoro-pet'
          config: {}
    ```
 
@@ -257,8 +257,8 @@ Expected: 107 tests, 107 passing. Changing `client.js` needs a browser refresh (
 ## Troubleshooting
 
 - **No sidebar icon, or an empty panel.** Check the `dsh web` log for `pomodoro-pet` errors, then verify the YAML indentation in `cordis.patch.yml` and that the bundle appears in `dsh.profile.bundles`.
-- **`/dsh-pomodoro/state` returns 404.** The Host half did not load. Check the bundle list, the `@local` symlink, and whether DSH was restarted.
-- **`Cannot find module '@local/dsh-pomodoro-pet'`.** The symlink or the `link:` path is wrong; inspect `~/.dsh/profiles/web/node_modules/@local/`.
+- **`/dsh-pomodoro/state` returns 404.** The Host half did not load. Check the bundle list, the `node_modules` symlink, and whether DSH was restarted.
+- **`Cannot find module 'dsh-pomodoro-pet'`.** The symlink or the `link:` path is wrong; inspect `~/.dsh/profiles/web/node_modules/`.
 - **Changes to `client.js` do not appear.** The client bundle is cached; hard-refresh. Host changes always need a restart.
 - **Shortcuts do nothing.** They only work while the panel is mounted and focus is not inside an input or dialog.
 - **Theme does not follow DSH.** The plugin reads the DSH theme; restart DSH after changing Settings → General → Appearance.
@@ -266,9 +266,9 @@ Expected: 107 tests, 107 passing. Changing `client.js` needs a browser refresh (
 
 ## Uninstall
 
-1. Remove `@local/dsh-pomodoro-pet` from `dsh.profile.bundles` and from `dependencies` in `~/.dsh/profiles/web/package.json`.
+1. Remove `dsh-pomodoro-pet` from `dsh.profile.bundles` and from `dependencies` in `~/.dsh/profiles/web/package.json`.
 2. Remove the `pomodoro-pet` row from `cordis.patch.yml`.
-3. Remove the symlink: `rm ~/.dsh/profiles/web/node_modules/@local/dsh-pomodoro-pet`.
+3. Remove the symlink: `rm ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet`.
 4. Restart `dsh web`.
 
 Data is not deleted automatically. Delete `$DSH_HOME/storages/pomodoro_pet.json` to reset everything.

@@ -10,7 +10,7 @@
 # 幂等：重复跑不会产生重复条目（会就地更新路径）。
 set -euo pipefail
 
-PLUGIN_NAME='@local/dsh-pomodoro-pet'
+PLUGIN_NAME='dsh-pomodoro-pet'
 PKG_DIR_NAME='dsh-pomodoro-pet'
 PROFILE='web'
 DEST=''
@@ -74,10 +74,14 @@ const fs = require('fs')
 const [file, name, targetDir] = process.argv.slice(2)
 const pkg = JSON.parse(fs.readFileSync(file, 'utf8'))
 pkg.dependencies ??= {}
-pkg.dependencies[name] = `link:${targetDir}`
 pkg.dsh ??= {}
 pkg.dsh.profile ??= {}
 pkg.dsh.profile.bundles ??= []
+// 迁移：清掉旧版带 scope 的登记（v0.9.1 之前的 @local/dsh-pomodoro-pet）
+const LEGACY = '@local/dsh-pomodoro-pet'
+delete pkg.dependencies[LEGACY]
+pkg.dsh.profile.bundles = pkg.dsh.profile.bundles.filter((b) => b !== LEGACY)
+pkg.dependencies[name] = `link:${targetDir}`
 if (!pkg.dsh.profile.bundles.includes(name)) pkg.dsh.profile.bundles.push(name)
 fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n')
 console.log('dependencies + bundles 已更新')
@@ -86,10 +90,16 @@ ok 'profile 清单已更新'
 
 # ---------- 4. 建软链 ----------
 say '建立 node_modules 软链'
-mkdir -p "$PROFILE_DIR/node_modules/@local"
-ln -sfn "$TARGET_DIR" "$PROFILE_DIR/node_modules/@local/$PKG_DIR_NAME"
-[[ -e "$PROFILE_DIR/node_modules/@local/$PKG_DIR_NAME/index.js" ]] || die '软链建立失败'
-ok "软链: $PROFILE_DIR/node_modules/@local/$PKG_DIR_NAME"
+mkdir -p "$PROFILE_DIR/node_modules"
+ln -sfn "$TARGET_DIR" "$PROFILE_DIR/node_modules/$PKG_DIR_NAME"
+[[ -e "$PROFILE_DIR/node_modules/$PKG_DIR_NAME/index.js" ]] || die '软链建立失败'
+# 迁移：清理旧版带 scope 的软链
+if [[ -L "$PROFILE_DIR/node_modules/@local/$PKG_DIR_NAME" || -e "$PROFILE_DIR/node_modules/@local/$PKG_DIR_NAME" ]]; then
+  rm -f "$PROFILE_DIR/node_modules/@local/$PKG_DIR_NAME"
+  rmdir "$PROFILE_DIR/node_modules/@local" 2>/dev/null || true
+  say '已清理旧版 @local 软链'
+fi
+ok "软链: $PROFILE_DIR/node_modules/$PKG_DIR_NAME"
 
 # ---------- 5. 插入 cordis.patch.yml ----------
 PATCH="$PROFILE_DIR/cordis.patch.yml"

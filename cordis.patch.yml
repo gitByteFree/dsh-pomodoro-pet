@@ -1,5 +1,5 @@
 # Pomodoro Pet: one Host plugin row.
 - insert:
     - id: pomodoro-pet
-      name: '@local/dsh-pomodoro-pet'
+      name: 'dsh-pomodoro-pet'
       config: {}

@@ -40,7 +40,7 @@ cd dsh-pomodoro-pet
 # ./install.sh --home /path/to/.dsh --profile web
 ```
 
-脚本会拷贝插件、写入 profile 的 `dependencies` 与 `dsh.profile.bundles`、建立 `@local` 软链，并向 `cordis.patch.yml` 追加插件行。重复执行是安全的。完成后重启 `dsh web`；Host 侧代码只在启动时加载。
+脚本会拷贝插件、写入 profile 的 `dependencies` 与 `dsh.profile.bundles`、建立 `node_modules` 软链，并向 `cordis.patch.yml` 追加插件行。重复执行是安全的。完成后重启 `dsh web`；Host 侧代码只在启动时加载。
 
 ### 手动安装
 
@@ -50,11 +50,11 @@ cd dsh-pomodoro-pet
    ```json
    {
      "dependencies": {
-       "@local/dsh-pomodoro-pet": "link:/home/<你的用户名>/dsh-plugins/dsh-pomodoro-pet"
+       "dsh-pomodoro-pet": "link:/home/<你的用户名>/dsh-plugins/dsh-pomodoro-pet"
      },
      "dsh": {
        "profile": {
-         "bundles": ["...原有 bundle...", "@local/dsh-pomodoro-pet"]
+         "bundles": ["...原有 bundle...", "dsh-pomodoro-pet"]
        }
      }
    }
@@ -63,8 +63,8 @@ cd dsh-pomodoro-pet
 3. 建立软链：
 
    ```bash
-   mkdir -p ~/.dsh/profiles/web/node_modules/@local
-   ln -sfn ~/dsh-plugins/dsh-pomodoro-pet ~/.dsh/profiles/web/node_modules/@local/dsh-pomodoro-pet
+   mkdir -p ~/.dsh/profiles/web/node_modules
+   ln -sfn ~/dsh-plugins/dsh-pomodoro-pet ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet
    ```
 
 4. 向 `~/.dsh/profiles/web/cordis.patch.yml` 追加：
@@ -72,7 +72,7 @@ cd dsh-pomodoro-pet
    ```yaml
    - insert:
        - id: pomodoro-pet
-         name: '@local/dsh-pomodoro-pet'
+         name: 'dsh-pomodoro-pet'
          config: {}
    ```
 
@@ -257,8 +257,8 @@ node --test engine.test.mjs v03-engine.test.mjs v04-engine.test.mjs agent-bridge
 ## 常见问题
 
 - **侧边栏没有图标或面板空白。** 先看 `dsh web` 日志里是否有 `pomodoro-pet` 报错，再确认 `cordis.patch.yml` 缩进正确、bundle 已加入 `dsh.profile.bundles`。
-- **`/dsh-pomodoro/state` 返回 404。** Host 半未加载。检查 bundle 列表、`@local` 软链，以及是否重启过 DSH。
-- **`Cannot find module '@local/dsh-pomodoro-pet'`。** 软链或 `link:` 路径不正确，检查 `~/.dsh/profiles/web/node_modules/@local/`。
+- **`/dsh-pomodoro/state` 返回 404。** Host 半未加载。检查 bundle 列表、`node_modules` 软链，以及是否重启过 DSH。
+- **`Cannot find module 'dsh-pomodoro-pet'`。** 软链或 `link:` 路径不正确，检查 `~/.dsh/profiles/web/node_modules/`。
 - **改了 `client.js` 不生效。** 客户端 bundle 有缓存，强制刷新；Host 侧修改必须重启。
 - **快捷键没反应。** 仅在面板挂载且焦点不在输入框或弹窗内时生效。
 - **主题不跟随 DSH。** 插件读取 DSH 主题；修改「设置 → 通用 → 外观」后重启 DSH。
@@ -266,9 +266,9 @@ node --test engine.test.mjs v03-engine.test.mjs v04-engine.test.mjs agent-bridge
 
 ## 卸载
 
-1. 从 `~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 与 `dependencies` 中移除 `@local/dsh-pomodoro-pet`。
+1. 从 `~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 与 `dependencies` 中移除 `dsh-pomodoro-pet`。
 2. 删除 `cordis.patch.yml` 中的 `pomodoro-pet` 行。
-3. 删除软链：`rm ~/.dsh/profiles/web/node_modules/@local/dsh-pomodoro-pet`。
+3. 删除软链：`rm ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet`。
 4. 重启 `dsh web`。
 
 数据不会自动删除；需要清空时删除 `$DSH_HOME/storages/pomodoro_pet.json`。

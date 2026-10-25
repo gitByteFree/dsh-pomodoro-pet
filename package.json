@@ -1,8 +1,33 @@
 {
-  "name": "@local/dsh-pomodoro-pet",
+  "name": "dsh-pomodoro-pet",
   "version": "0.9.1",
-  "private": true,
+  "description": "A focus companion for DeepSeek Harness Web: pomodoro timer, four-quadrant tasks, and a pet that grows with your focus.",
   "type": "module",
+  "license": "MIT",
+  "author": "chris",
+  "homepage": "https://github.com/gitByteFree/dsh-pomodoro-pet#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gitByteFree/dsh-pomodoro-pet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gitByteFree/dsh-pomodoro-pet/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "pomodoro",
+    "focus",
+    "timer",
+    "tasks",
+    "eisenhower",
+    "pet",
+    "productivity"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

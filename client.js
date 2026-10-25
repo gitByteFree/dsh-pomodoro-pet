@@ -14,7 +14,7 @@
  * endsAt/remainingMs locally with the serverNow offset (§11.2).
  */
 window.__ModuleLoader__.load({
-  id: '@local/dsh-pomodoro-pet',
+  id: 'dsh-pomodoro-pet',
   factory(require) {
     const React = require('react')
     const { useState, useEffect, useRef, useMemo, useCallback } = React
