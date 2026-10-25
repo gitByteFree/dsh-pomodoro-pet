@@ -83,7 +83,7 @@ cd dsh-pomodoro-pet
 DSH 本身不内置索引源。本仓库发布一个 format-1 索引：
 
 ```text
-https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/market/index.json
+https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json
 ```
 
 1. 打开 **插件** 页，启用实验性的 **自定义插件索引** bundle，进入 **发现（Discover）** 标签。

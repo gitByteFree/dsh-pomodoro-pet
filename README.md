@@ -83,7 +83,7 @@ The script copies the plugin, adds it to the profile's `dependencies` and `dsh.p
 DSH ships no built-in index source. This repository publishes a format-1 index:
 
 ```text
-https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/market/index.json
+https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json
 ```
 
 1. Open **Plugins**, enable the experimental **Custom plugin indexes** bundle, and open the **Discover** tab.
