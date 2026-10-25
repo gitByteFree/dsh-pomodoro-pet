@@ -57,19 +57,24 @@ window.__ModuleLoader__.load({
      *  这样 `` `${done} / ${goal} 个番茄` `` 这类插值后的成品（"6 / 8 个番茄"）
      *  也能翻译，而不需要为每个数字组合建 key。 */
     function tr(text, params) {
-      const raw = String(text ?? '')
-      if (!raw || !isEn()) return raw
-      const dict = i18nStore.dict
-      const exact = dict?.text?.[raw]
-      if (exact != null) {
-        if (!params) return exact
-        return exact.replace(/\{([\w$]+)\}/g, (m, key) => (key in params ? String(params[key]) : m))
-      }
-      let out = raw
+      const source = String(text ?? '')
+      if (!source) return source
+      // 插值发生在翻译之后：用户数据以 params 传入，永远不会被词典/正则改写。
+      const fill = (template) => (params
+        ? template.replace(/\{([\w$]+)\}/g, (m, key) => (key in params ? String(params[key]) : m))
+        : template)
+      if (!isEn()) return fill(source)
+      const exact = i18nStore.dict?.text?.[source]
+      if (exact != null) return fill(exact)
+      let out = source
       for (const [re, rep] of PATTERNS) {
-        if (re.test(out)) out = out.replace(re, rep)
+        // /g 正则的 lastIndex 会跨 test 保留，先归零再判断/替换。
+        re.lastIndex = 0
+        if (!re.test(out)) continue
+        re.lastIndex = 0
+        out = out.replace(re, rep)
       }
-      return out
+      return fill(out)
     }
     const trf = (text, params) => tr(text, params)
 
@@ -92,9 +97,28 @@ window.__ModuleLoader__.load({
     /** 需要翻译的字符串 props。 */
     const TEXT_PROPS = new Set(['title', 'aria-label', 'placeholder', 'alt'])
 
+    /* ---- 用户数据边界 -----------------------------------------------------
+     * 任务名/分组名/会话名/技能名是「数据」，不是 UI 文案。旧实现把 h() 的
+     * 每个字符串 child 都交给 tr()，PATTERNS 里的宽泛正则会把中文数据改坏
+     * （"连续 3 天复盘" → "3-day streak复盘"、"专注" → "Focus"）。
+     * 数据用 raw() 包一层，h() 在出口原样展开；需要拼 UI 文案时用
+     * trf(template, {数据})，让数据只作为插值参数、永不进入翻译管线。 */
+    const RAW_TEXT = Symbol('pomodoro-pet:raw')
+    /** 中文界面不需要翻译也不需要标记：raw() 直接返回字符串，h() 因此可以走
+     *  和旧版本一样的早退快路径（英文界面才需要 marker 来跳过翻译）。 */
+    const raw = (value) => {
+      const text = String(value ?? '')
+      return isEn() ? { [RAW_TEXT]: text } : text
+    }
+    const isRaw = (value) => typeof value === 'object' && value !== null && RAW_TEXT in value
+    /** trf 的 raw 版本：结果最终交给 h() 渲染时用它，避免 h() 对已翻译文案再翻一遍
+     *  （二次翻译会把插值进来的中文数据交给 PATTERNS 再次改写）。 */
+    const trRaw = (text, params) => raw(tr(text, params))
+
     /** 递归翻译 React 元素树（只处理字符串 child 与常见文本 props）。 */
     function localizeNode(node) {
       if (!isEn() || node == null || typeof node === 'boolean') return node
+      if (isRaw(node)) return node[RAW_TEXT]
       if (typeof node === 'string') return localizeText(node)
       if (typeof node === 'number' || typeof node === 'bigint') return node
       if (Array.isArray(node)) {
@@ -125,40 +149,55 @@ window.__ModuleLoader__.load({
 
     /** 本地化 createElement：在元素创建时翻译字符串 children 与文本 props。
      *  这样做的好处是覆盖所有 `h('div', null, '文案')` 与插值模板，无需改写
-     *  500+ 处 JSX；语言切换时由外层 withI18n 触发重渲染 → h() 重新执行。 */
+     *  500+ 处 JSX；语言切换时由外层 withI18n 触发重渲染 → h() 重新执行。
+     *  raw() 包装的数据在两种语言下都原样展开（不翻译）。 */
     function h(type, props, ...children) {
-      if (!isEn()) return React.createElement(type, props, ...children)
+      if (!isEn()) {
+        // 快路径：中文界面没有翻译成本，也没有常规 marker（raw() 返回纯字符串）。
+        // 只有「渲染间隙语言从英文切回中文」时少量 state 可能残留 marker，兜底展开。
+        let hasRaw = false
+        for (const child of children) {
+          if (isRaw(child)) { hasRaw = true; break }
+        }
+        if (!hasRaw) return React.createElement(type, props, ...children)
+        return React.createElement(type, props, ...children.map(child => (isRaw(child) ? child[RAW_TEXT] : child)))
+      }
       let nextProps = props
       if (props) {
-        for (const key of TEXT_PROPS) {
+        for (const key of Object.keys(props)) {
           const value = props[key]
-          if (typeof value !== 'string') continue
-          const out = localizeText(value)
-          if (out !== value) nextProps = { ...(nextProps ?? {}), [key]: out }
+          if (isRaw(value)) {
+            nextProps = { ...(nextProps ?? props), [key]: value[RAW_TEXT] }
+          } else if (isEn() && TEXT_PROPS.has(key) && typeof value === 'string') {
+            const out = localizeText(value)
+            if (out !== value) nextProps = { ...(nextProps ?? props), [key]: out }
+          }
         }
       }
       let nextChildren = children
       if (children.length) {
         let changed = false
-        nextChildren = children.map(child => {
+        const mapChild = (child) => {
+          if (isRaw(child)) { changed = true; return child[RAW_TEXT] }
           if (typeof child === 'string') {
+            if (!isEn()) return child
             const out = localizeText(child)
             if (out !== child) changed = true
             return out
           }
           if (Array.isArray(child)) {
+            // 递归展开嵌套 children 数组：raw() 无论嵌套几层都不会漏给 React。
             let arrChanged = false
             const mapped = child.map(item => {
-              if (typeof item !== 'string') return item
-              const out = localizeText(item)
+              const out = mapChild(item)
               if (out !== item) arrChanged = true
               return out
             })
-            if (arrChanged) changed = true
             return arrChanged ? mapped : child
           }
           return child
-        })
+        }
+        nextChildren = children.map(mapChild)
         if (!changed) nextChildren = children
       }
       return React.createElement(type, nextProps, ...nextChildren)
@@ -181,6 +220,7 @@ window.__ModuleLoader__.load({
     const trRarity = (r) => tr(RARITY_TEXT[r] ?? r)
 
     /* ---------------- 词典（key = 中文原文 → 英文） ---------------- */
+    // >>> i18n:EN_TEXT
     /** EN_TEXT: 精确命中（静态文案）。 */
     const EN_TEXT = {
       "番茄精灵": "Pomodoro Pet", "番茄钟宠物": "Pomodoro Pet", "专注 · 任务 · 成长": "Focus · Tasks · Growth",
@@ -347,9 +387,24 @@ window.__ModuleLoader__.load({
       "🌱 标准": "🌱 Standard", "🍅 标准": "🍅 Standard", "🌿 深度": "🌿 Deep", "⚡ 冲刺": "⚡ Sprint", "番茄": "Pomodoro",
       "标准 25": "Standard 25", "深度 50": "Deep 50", "冲刺 15": "Sprint 15", "工作区技能": "Workspace skills",
       "成就": "Achievements", "成就进度 ": "Achievement progress ",
+      // 带用户数据的 UI 模板：数据只作为 trf 的插值参数，永远不进入翻译管线。
+      "本轮任务:{title}": "Current task: {title}",
+      "删除任务「{title}」?": "Delete task “{title}”?",
+      "删除任务 {title}": "Delete task {title}",
+      "重新打开任务 {title}": "Reopen task {title}",
+      "完成任务 {title}": "Complete task {title}",
+      "对「{title}」开钟": "Start focus on “{title}”",
+      "「{title}」": "“{title}”",
+      "新建任务「{title}」 {quadrant} 🍅×{n}": "New task “{title}” {quadrant} 🍅×{n}",
+      "修改任务 {taskId}: {patch}": "Edit task {taskId}: {patch}",
+      "会话 {id}": "Session {id}",
+      "{cwd} 会话": "Session in {cwd}",
+      "Lv.{lv} {stage} · 番茄精灵": "Lv.{lv} {stage} · Pomodoro Pet",
     }
+    // <<< i18n:EN_TEXT
     /** 中文词典（自映射，供 ctx.locale 的中文查找链完整）。 */
     const ZH_SELF_DICT = Object.fromEntries(Object.keys(EN_TEXT).map(k => [k, k]))
+    // >>> i18n:PATTERNS
     /** PATTERNS: [正则, 替换] 用于插值成品（"6 / 8 个番茄"、"3 天"…）。 */
     const PATTERNS = [
 
@@ -446,6 +501,7 @@ window.__ModuleLoader__.load({
       [/^≈ (\d+) 分钟$/g, "≈ $1 min"],
 
     ]
+    // <<< i18n:PATTERNS
     const buildDict = () => ({ text: EN_TEXT })
 
     /* ---------------- 设计 token (§13.1 + v0.5 视觉重设计) ---------------- */
@@ -474,7 +530,16 @@ window.__ModuleLoader__.load({
     const EASE_BACK = 'cubic-bezier(0.34, 1.56, 0.64, 1)'
     /** 动画总开关（§13.6 animationEnabled + prefers-reduced-motion 双闸门）。 */
     let animationsOn = true
-    const setAnimationsEnabled = (v) => { animationsOn = v !== false }
+    const setAnimationsEnabled = (v) => {
+      animationsOn = v !== false
+      // JS 侧 reduceMotion() 只挡了少数几处入场动画；CSS 里还有 20+ 条常驻
+      // animation/transition。挂一个根属性让 CSS 也能真正停掉（省电/降噪）。
+      try {
+        if (typeof document !== 'undefined') {
+          document.documentElement.setAttribute('data-pp-anim', animationsOn ? 'on' : 'off')
+        }
+      } catch { /* DOM unavailable */ }
+    }
     const reduceMotion = () => {
       if (!animationsOn) return true
       try { return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false } catch { return false }
@@ -1028,6 +1093,9 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
 @media(prefers-reduced-motion:reduce){
   .pp-app *,.pp-pet-host *{animation:none!important;transition:none!important}
 }
+[data-pp-anim="off"] .pp-app *,[data-pp-anim="off"] .pp-pet-host *{
+  animation:none!important;transition:none!important
+}
 `
     function ensureStyles() {
       if (typeof document === 'undefined') return
@@ -1332,42 +1400,82 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       try { eventSource.close() } catch { /* already closed */ }
       eventSource = undefined
     }
+    async function refreshSnapshot() {
+      try { const r = await api.state(); if (r.ok) emitSnapshot(r.snapshot) } catch { /* host unreachable */ }
+    }
+    // 轮询/可见性监听按 store 单例化：面板 + 桌宠两个 useSnapshot 订阅者共享
+    // 一个 30s 定时器和一个 visibilitychange 监听（此前各开一份，回前台会打两次
+    // /state，agent 上下文也会重复拉取）。
+    let snapshotPollTimer = null
+    let visibilityBound = false
+    let lastVisibleRefreshAt = 0
+    function ensureSnapshotPoll() {
+      if (snapshotPollTimer) return
+      snapshotPollTimer = setInterval(() => {
+        if (document.visibilityState === 'visible') void refreshSnapshot()
+      }, 30_000)
+      snapshotPollTimer.unref?.()
+    }
+    function releaseSnapshotPoll() {
+      if (snapshotStore.listeners.size > 0 || !snapshotPollTimer) return
+      clearInterval(snapshotPollTimer)
+      snapshotPollTimer = null
+    }
+    function bindVisibility() {
+      if (visibilityBound || typeof document === 'undefined') return
+      visibilityBound = true
+      document.addEventListener('visibilitychange', manageEventsByVisibility)
+    }
+    function unbindVisibility() {
+      if (!visibilityBound || typeof document === 'undefined') return
+      visibilityBound = false
+      document.removeEventListener('visibilitychange', manageEventsByVisibility)
+    }
     function manageEventsByVisibility() {
       if (typeof document === 'undefined') return
+      // 始终保留 SSE 推送：阶段结束的提示音/桌面通知由快照翻转驱动，hidden 时
+      // 关闭连接等于让后台提醒永远不触发（旧行为）。轮询仍只在可见时做兜底；
+      // 服务端对每条流有 5 分钟硬上限，EventSource 会自动重连。
+      openEvents()
       if (document.visibilityState === 'visible') {
-        openEvents()
-        void api.state().then(r => { if (r.ok) emitSnapshot(r.snapshot) }).catch(() => {})
-      } else {
-        closeEvents()
+        // hidden→visible 可能由两个订阅者各触发一次；1s 内只补一次请求。
+        const at = Date.now()
+        if (at - lastVisibleRefreshAt > 1000) {
+          lastVisibleRefreshAt = at
+          void refreshSnapshot()
+          void fetchAgentContext()
+        }
+        notifyAgentCtx()
       }
     }
 
     function useSnapshot() {
       const [snap, setSnap] = React.useState(snapshotStore.snap)
-      const refresh = React.useCallback(async () => {
-        try { const r = await api.state(); if (r.ok) emitSnapshot(r.snapshot) } catch { /* host unreachable */ }
-      }, [])
+      const refresh = React.useCallback(() => { void refreshSnapshot() }, [])
       React.useEffect(() => {
         snapshotStore.listeners.add(setSnap)
+        bindVisibility()
         manageEventsByVisibility()
-        document.addEventListener('visibilitychange', manageEventsByVisibility)
-        if (!snapshotStore.snap) void refresh()
-        const id = setInterval(() => {
-          if (document.visibilityState === 'visible') void refresh()
-        }, 30_000)
+        ensureSnapshotPoll()
+        if (!snapshotStore.snap) void refreshSnapshot()
         return () => {
           snapshotStore.listeners.delete(setSnap)
-          clearInterval(id)
-          document.removeEventListener('visibilitychange', manageEventsByVisibility)
-          if (snapshotStore.listeners.size === 0) closeEvents()
+          releaseSnapshotPoll()
+          if (snapshotStore.listeners.size === 0) {
+            closeEvents()
+            unbindVisibility()
+          }
         }
-      }, [refresh])
+      }, [])
       return { snap, refresh }
     }
 
     /* ---------------- v0.8 DSH Agent 联动（会话 / Agent 动态 / 技能） ---- */
 
     const agentCtxStore = { ctx: null, listeners: new Set() }
+    const notifyAgentCtx = () => {
+      for (const fn of [...agentCtxStore.listeners]) fn(agentCtxStore.ctx)
+    }
     function emitAgentCtx(ctx) {
       if (!ctx || ctx.ok === false) return
       const prev = agentCtxStore.ctx
@@ -1378,7 +1486,10 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         next.skills = prev.skills
       }
       agentCtxStore.ctx = next
-      for (const fn of [...agentCtxStore.listeners]) fn(next)
+      // hidden 时只存不渲染：agent 帧最高 ~1.25/s，隐藏标签页没必要为它重建 UI。
+      // 回到可见时 manageEventsByVisibility 会 notifyAgentCtx() 补一次。
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      notifyAgentCtx()
     }
     async function fetchAgentContext() {
       try {
@@ -1387,15 +1498,26 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         emitAgentCtx(await res.json())
       } catch { /* host unreachable — sections stay hidden */ }
     }
+    let agentPollTimer = null
+    function ensureAgentPoll() {
+      if (agentPollTimer) return
+      agentPollTimer = setInterval(() => {
+        if (document.visibilityState === 'visible') void fetchAgentContext()
+      }, 60_000)
+      agentPollTimer.unref?.()
+    }
+    function releaseAgentPoll() {
+      if (agentCtxStore.listeners.size > 0 || !agentPollTimer) return
+      clearInterval(agentPollTimer)
+      agentPollTimer = null
+    }
     function useAgentContext() {
       const [ctx, setCtx] = React.useState(agentCtxStore.ctx)
       React.useEffect(() => {
         agentCtxStore.listeners.add(setCtx)
+        ensureAgentPoll()
         if (!agentCtxStore.ctx) void fetchAgentContext()
-        const id = setInterval(() => {
-          if (document.visibilityState === 'visible') void fetchAgentContext()
-        }, 60_000)
-        return () => { agentCtxStore.listeners.delete(setCtx); clearInterval(id) }
+        return () => { agentCtxStore.listeners.delete(setCtx); releaseAgentPoll() }
       }, [])
       return ctx
     }
@@ -1442,10 +1564,12 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const agent = context?.agent
       const hasAgent = showAgent && agent && (agent.running || (agent.today?.tools ?? 0) > 0)
       if (!session && !hasAgent) return null
-      const label = session?.label || (session?.id ? `会话 ${String(session.id).slice(0, 8)}` : null)
+      const label = session?.label
+        ? raw(session.label)
+        : (session?.id ? trRaw('会话 {id}', { id: String(session.id).slice(0, 8) }) : null)
       return h('div', { className: 'pp-context', 'aria-label': '工作上下文' },
-        showContext && session?.cwdName && h('span', { className: 'pp-ctag', title: session.cwd ?? '' },
-          h('span', { 'aria-hidden': true }, '📁'), session.cwdName),
+        showContext && session?.cwdName && h('span', { className: 'pp-ctag', title: raw(session.cwd ?? '') },
+          h('span', { 'aria-hidden': true }, '📁'), raw(session.cwdName)),
         showContext && label && h('span', { className: 'pp-ctag pp-ctag-session', title: '最近活跃会话（启发式）' },
           h('span', { 'aria-hidden': true }, '💬'), label),
         hasAgent && h('span', {
@@ -1467,7 +1591,8 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const expirable = !!r && r.endsAt != null
         && ['focus', 'break', 'longBreak'].includes(r.status)
       React.useEffect(() => {
-        if (!r) return
+        // paused/waiting 没有在走的时钟（remainingMs 冻结 / endsAt 已过期），不 tick。
+        if (!r || r.endsAt == null || r.status === 'waiting') return
         const id = setInterval(tick, 1000)
         const check = expirable
           ? setInterval(() => {
@@ -1487,6 +1612,56 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
     const fmtClock = (ms) => {
       const s = Math.ceil(ms / 1000)
       return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+    }
+
+    /** 只订阅 1 Hz 倒计时的叶子节点：父组件不再每秒重建。 */
+    function LiveTime({ snap, refresh, className, idleText }) {
+      const remaining = useRemaining(snap, refresh)
+      return h('span', { className }, remaining != null ? fmt(remaining) : idleText)
+    }
+
+    /** 大圆环倒计时（进度环 + 时间 + 状态文案）。1 Hz 只重渲染这一小块。 */
+    function TimerDial({ snap, refresh }) {
+      const r = snap.running
+      const status = r?.status
+      const paused = !!r && r.endsAt == null && r.remainingMs != null
+      const running = !!r && !paused && r.endsAt != null
+        && ['focus', 'break', 'longBreak'].includes(status)
+      const mode = r?.mode ?? snap.settings.mode ?? 'standard'
+      const modeDef = MODES.find(m => m.key === mode) ?? MODES[0]
+      const remaining = useRemaining(snap, refresh)
+      // 每秒 tick 不再重建宠物 SVG（它只在 stage/mood/status 变化时需要）。
+      const petArt = React.useMemo(
+        () => petSvg(snap.pet.stage, snap.pet.mood, status, 26, snap.pet.outfitId),
+        [snap.pet.stage, snap.pet.mood, status, snap.pet.outfitId],
+      )
+      const total = (r?.focusMinutes ?? modeDef.min) * 60_000
+      const frac = r && remaining != null && total > 0 ? 1 - remaining / total : 0
+      const RING_R = 100, RING_C = 2 * Math.PI * RING_R
+      const ringColor = status === 'break' || status === 'longBreak' ? '#4ba66a' : '#f15f50'
+      const caption = !r ? '准备开始专注'
+        : paused ? '已暂停，休息一下也好'
+        : running && remaining != null && remaining <= 0 ? '本轮完成，结算中…'
+        : status === 'focus' ? '正在专注…'
+        : status === 'waiting' ? '休息结束，确认后开始下一轮'
+        : '休息中，撒欢一下'
+      return h('div', { className: 'pp-ringwrap' },
+        h('div', { className: 'pp-ringbox' },
+          h('svg', {
+            viewBox: '0 0 230 230', role: 'img',
+            'aria-label': r ? `${statusLabel(status)} ${fmtClock(remaining ?? 0)}` : '空闲,准备开始专注',
+          },
+            h('circle', { cx: 115, cy: 115, r: RING_R, fill: 'none', stroke: 'var(--pp-line)', strokeWidth: 14 }),
+            h('circle', {
+              cx: 115, cy: 115, r: RING_R, fill: 'none', stroke: ringColor, strokeWidth: 14, strokeLinecap: 'round',
+              strokeDasharray: `${RING_C}`, strokeDashoffset: `${RING_C * (1 - Math.min(1, Math.max(0, frac)))}`,
+              transform: 'rotate(-90 115 115)',
+              style: { transition: 'stroke-dashoffset 1s linear' },
+            })),
+          h('div', { className: 'pp-ring-inner' },
+            h('div', { style: { transform: 'scale(.5)', height: 26 } }, petArt),
+            h('div', { className: 'pp-time' }, r ? fmtClock(remaining ?? 0) : `${modeDef.min}:00`),
+            h('div', { className: 'pp-caption' }, caption))))
     }
 
     /* ---------------- v0.5 shared presentational helpers ---------------- */
@@ -1677,7 +1852,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const s = snap.lastSettlement
       const items = s ? [
         { text: `🍅 本次专注 ${fmt((s.focusMinutes ?? 25) * 60_000)}`, big: true },
-        s.taskTitle && { text: `「${s.taskTitle}」`, sub: true },
+        s.taskTitle && { text: trRaw('「{title}」', { title: s.taskTitle }), sub: true },
         { text: `+${s.expGained} EXP`, color: '#df4e42', big: true },
         { text: `🔥 连续 ${s.streak} 天`, color: '#c78116' },
         ...(s.leveledUp ? [{ text: `⬆️ 升到 Lv.${s.level}!`, color: '#328b50', big: true }] : []),
@@ -1761,7 +1936,6 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       ensureStyles()
       const theme = useTheme()
       const { snap, refresh } = useSnapshot()
-      const remaining = useRemaining(snap, refresh)
       usePhaseFx(snap)
       const { openId, close } = useSettlement(snap, refresh)
       const [pos, setPos] = React.useState(() => {
@@ -1851,7 +2025,8 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         const t = Date.now()
         if (t - lastToolBubbleAt.current < 2500) return
         lastToolBubbleAt.current = t
-        setPetBubble(`${toolIcon(lastAgentTool.name)} ${lastAgentTool.name}${lastAgentTool.ok ? '' : ' ✗'}`)
+        // 工具名是数据（可能是中文），用 raw() 遮住避免被 PATTERNS 改写。
+        setPetBubble(raw(`${toolIcon(lastAgentTool.name)} ${lastAgentTool.name}${lastAgentTool.ok ? '' : ' ✗'}`))
         clearTimeout(bubbleTimer.current)
         bubbleTimer.current = setTimeout(() => setPetBubble(null), 2200)
       }, [lastAgentTool?.at, prefs.showAgent])
@@ -1864,7 +2039,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       // §4.1 不变式: 已暂停 = endsAt==null && remainingMs!=null（引擎 PAUSE 不改 status）
       const pausedNow = !!r && r.endsAt == null && r.remainingMs != null
       const stateText = r
-        ? (pausedNow ? `已暂停,剩余 ${fmt(remaining ?? 0)}` : status === 'focus' ? `专注中,剩余 ${fmt(remaining ?? 0)}` : status === 'waiting' ? '休息结束,等你确认' : '休息中')
+        ? (pausedNow ? '已暂停' : status === 'focus' ? '专注中' : status === 'waiting' ? '休息结束,等你确认' : '休息中')
         : `空闲,Lv.${snap.pet.level}`
       const label = collapsed
         ? `番茄精灵:已收纳（${stateText}） — 点击或按 Enter 展开`
@@ -1970,7 +2145,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
             : [
                 h('span', { key: `art-${popAt}`, style: { display: 'grid', placeItems: 'center', width: 30, height: 30, transform: `scale(${Math.min(scale, 1.4)})`, transformOrigin: 'center' }, 'aria-hidden': true },
                   petSvg(snap.pet.stage, snap.pet.mood, status, 30, snap.pet.outfitId)),
-                h('span', { key: 'time', className: 'pp-pettime' }, remaining != null ? fmt(remaining) : `Lv.${snap.pet.level}`),
+                h(LiveTime, { key: 'time', snap, refresh, className: 'pp-pettime', idleText: `Lv.${snap.pet.level}` }),
                 prefs.showAgent && agentCtx?.agent?.running && h('span', {
                   key: 'agent', className: 'pp-agent-thought pill', 'aria-hidden': true, title: 'Agent 正在工作',
                 }, '···'),
@@ -2005,7 +2180,6 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       ensureStyles()
       const theme = useTheme()
       const { snap, refresh } = useSnapshot()
-      const remaining = useRemaining(snap, refresh)
       usePhaseFx(snap)
       const { openId, close } = useSettlement(snap, refresh)
       // v0.5.1: 默认 Tab「专注」= 计时+任务合并页（用户确认, 2026-10-18）。
@@ -2133,7 +2307,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
             context: agentCtx, showContext: prefs.showContext, showAgent: prefs.showAgent,
           }),
           // 内容区
-          tab === 'focus' && h(FocusTab, { snap, refresh, remaining, onNav: goto, quadFilter, setQuadFilter }),
+          tab === 'focus' && h(FocusTab, { snap, refresh, onNav: goto, quadFilter, setQuadFilter }),
           tab === 'stats' && h(StatsTab, { snap, refresh }),
           tab === 'settings' && h(SettingsTab, { snap, refresh }),
         ),
@@ -2161,7 +2335,34 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
 
     /* ---------------- 专注 Tab = 计时 + 任务合并页 (设计稿 1, v0.5.1) ---------------- */
 
-    function FocusTab({ snap, refresh, remaining, onNav, quadFilter, setQuadFilter }) {
+    /** 宠物头像：视线跟随状态收敛在叶子组件里。此前 gaze 放在 FocusTab 根部，
+     *  pointermove 每帧都会重建整棵任务列表；现在只重建这两只宠物。 */
+    function PetAvatar({ snap, status, size, className, ariaLabel, title, onClick, bubble }) {
+      const [gaze, setGaze] = React.useState(null)
+      const raf = React.useRef(0)
+      React.useEffect(() => () => { if (raf.current) cancelAnimationFrame(raf.current) }, [])
+      const onMove = (e) => {
+        if (raf.current) return
+        const el = e.currentTarget
+        const px = e.clientX, py = e.clientY
+        raf.current = requestAnimationFrame(() => {
+          raf.current = 0
+          const rect = el.getBoundingClientRect()
+          if (!rect.width) return
+          setGaze({ x: (px - rect.left) / rect.width - .5, y: (py - rect.top) / rect.height - .5 })
+        })
+      }
+      const onLeave = () => setGaze(null)
+      return h('button', {
+        type: 'button', className, 'aria-label': ariaLabel, title,
+        onPointerMove: onMove, onPointerLeave: onLeave, onClick,
+        style: { border: 0, background: 'transparent', padding: 0, cursor: 'pointer' },
+      },
+        petSvg(snap.pet.stage, snap.pet.mood, status, size, snap.pet.outfitId, gaze),
+        bubble)
+    }
+
+    function FocusTab({ snap, refresh, onNav, quadFilter, setQuadFilter }) {
       const r = snap.running
       const status = r?.status
       // §4.1 不变式: 已暂停 = endsAt 为空 且 remainingMs 非空（引擎 PAUSE 不改 status 字段,
@@ -2171,7 +2372,6 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         && ['focus', 'break', 'longBreak'].includes(status)
       const allActive = snap.tasks.filter(t => t.status === 'active').sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
       const mode = r?.mode ?? snap.settings.mode ?? 'standard'
-      const modeDef = MODES.find(m => m.key === mode) ?? MODES[0]
       const [taskOpen, setTaskOpen] = React.useState(false)
       const [creating, setCreating] = React.useState(false)
       const [dragId, setDragId] = React.useState(null)
@@ -2188,25 +2388,14 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const lastAgentTool = agentCtx?.agent?.lastTools?.[0] ?? null
       const toolSeenAt = React.useRef(0)
       const lastToolBubbleAt = React.useRef(0)
-      // ---- 宠物互动（v0.7）：视线跟随 + 点击反应 ----
-      const [gaze, setGaze] = React.useState(null)
+      // ---- 宠物互动（v0.7）：点击反应（视线跟随已下沉到 PetAvatar） ----
       const [petBubble, setPetBubble] = React.useState(null)
       const [popAt, setPopAt] = React.useState(0)
       const bubbleTimer = React.useRef(null)
-      const gazeRaf = React.useRef(0)
-      React.useEffect(() => () => { clearTimeout(bubbleTimer.current); if (gazeRaf.current) cancelAnimationFrame(gazeRaf.current) }, [])
-      const onPetMove = (e) => {
-        if (gazeRaf.current) return
-        const el = e.currentTarget
-        const px = e.clientX, py = e.clientY
-        gazeRaf.current = requestAnimationFrame(() => {
-          gazeRaf.current = 0
-          const r = el.getBoundingClientRect()
-          if (!r.width) return
-          setGaze({ x: (px - r.left) / r.width - .5, y: (py - r.top) / r.height - .5 })
-        })
-      }
-      const onPetLeave = () => setGaze(null)
+      // 上一次互动台词（避免连续重复）。必须定义在 FocusTab 作用域内——
+      // 之前误用了 PetOverlay 里的同名 ref，点击宠物会抛 ReferenceError。
+      const heroLastLine = React.useRef('')
+      React.useEffect(() => () => { clearTimeout(bubbleTimer.current) }, [])
       const petLine = () => {
         const pool = petTalkPool({ status: r?.status, paused: r && r.endsAt == null && r.remainingMs != null, mood: snap.pet.mood })
         const line = pickTalkLine(pool, heroLastLine.current)
@@ -2229,7 +2418,8 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         const t = Date.now()
         if (t - lastToolBubbleAt.current < 1500) return
         lastToolBubbleAt.current = t
-        setPetBubble(`${toolIcon(lastAgentTool.name)} ${lastAgentTool.name}${lastAgentTool.ok ? '' : ' ✗'}`)
+        // 工具名是数据（可能是中文），用 raw() 遮住避免被 PATTERNS 改写。
+        setPetBubble(raw(`${toolIcon(lastAgentTool.name)} ${lastAgentTool.name}${lastAgentTool.ok ? '' : ' ✗'}`))
         clearTimeout(bubbleTimer.current)
         bubbleTimer.current = setTimeout(() => setPetBubble(null), 1800)
       }, [lastAgentTool?.at, prefs.showAgent])
@@ -2245,18 +2435,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const visibleQuads = QUADRANTS.filter(q => filter === 'all' || filter === q.key)
       const visibleActive = allActive.filter(t => filter === 'all' || visibleQuads.some(q => q.key === t.quadrant))
 
-      // 圆环进度: 运行中/暂停中都按剩余量算（暂停冻结在暂停处, 不归零）; SVG 保证正圆。
-      const total = (r?.focusMinutes ?? modeDef.min) * 60_000
-      const frac = r && remaining != null && total > 0 ? 1 - remaining / total : 0
-      const RING_R = 100, RING_C = 2 * Math.PI * RING_R
-      const ringColor = status === 'break' || status === 'longBreak' ? '#4ba66a' : '#f15f50'
-      const caption = !r ? '准备开始专注'
-        : paused ? '已暂停，休息一下也好'
-        : running && remaining != null && remaining <= 0 ? '本轮完成，结算中…'
-        : status === 'focus' ? '正在专注…'
-        : status === 'waiting' ? '休息结束，确认后开始下一轮'
-        : '休息中，撒欢一下'
-
+      // 圆环进度/倒计时在 TimerDial 内部，只有它跟随 1 Hz 重渲染。
       const start = (focusMinutes) => api.action('start', {
         ...(focusMinutes != null ? { focusMinutes } : {}),
         taskId: snap.activeTaskId ?? undefined, mode,
@@ -2339,31 +2518,12 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
                 prefs.showAgent && agentCtx?.agent?.running && h('span', {
                   className: 'pp-agent-thought', 'aria-hidden': true, title: 'Agent 正在工作',
                 }, '· · ·'),
-                h('button', {
-                  type: 'button', className: `pp-pet-live pp-bigtomato${petPopClass()}`,
-                  'aria-label': '摸摸番茄精灵', title: '点我互动',
-                  onPointerMove: onPetMove, onPointerLeave: onPetLeave, onClick: pokePet,
-                  style: { border: 0, background: 'transparent', padding: 0, cursor: 'pointer' },
-                },
-                  petSvg(snap.pet.stage, snap.pet.mood, status, 132, snap.pet.outfitId, gaze),
-                  petBubble && h('span', { className: 'pp-pet-bubble', role: 'status' }, petBubble))),
-              h('div', { className: 'pp-ringwrap' },
-                h('div', { className: 'pp-ringbox' },
-                  h('svg', {
-                    viewBox: '0 0 230 230', role: 'img',
-                    'aria-label': r ? `${statusLabel(status)} ${fmtClock(remaining ?? 0)}` : '空闲,准备开始专注',
-                  },
-                    h('circle', { cx: 115, cy: 115, r: RING_R, fill: 'none', stroke: 'var(--pp-line)', strokeWidth: 14 }),
-                    h('circle', {
-                      cx: 115, cy: 115, r: RING_R, fill: 'none', stroke: ringColor, strokeWidth: 14, strokeLinecap: 'round',
-                      strokeDasharray: `${RING_C}`, strokeDashoffset: `${RING_C * (1 - Math.min(1, Math.max(0, frac)))}`,
-                      transform: 'rotate(-90 115 115)',
-                      style: { transition: 'stroke-dashoffset 1s linear' },
-                    })),
-                  h('div', { className: 'pp-ring-inner' },
-                    h('div', { style: { transform: 'scale(.5)', height: 26 } }, petSvg(snap.pet.stage, snap.pet.mood, status, 26, snap.pet.outfitId)),
-                    h('div', { className: 'pp-time' }, r ? fmtClock(remaining ?? 0) : `${modeDef.min}:00`),
-                    h('div', { className: 'pp-caption' }, caption))))),
+                h(PetAvatar, {
+                  snap, status, size: 132, className: `pp-pet-live pp-bigtomato${petPopClass()}`,
+                  ariaLabel: '摸摸番茄精灵', title: '点我互动', onClick: pokePet,
+                  bubble: petBubble && h('span', { className: 'pp-pet-bubble', role: 'status' }, petBubble),
+                })),
+              h(TimerDial, { snap, refresh })),
             // 模式三卡（运行中禁用: SET_MODE 仅 idle/waiting）
             h('div', { className: 'pp-modes', role: 'group', 'aria-label': '专注模式' },
               MODES.map(m => h('button', {
@@ -2386,7 +2546,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
                   style: { width: 8, height: 8, borderRadius: '50%', background: activeTask ? qColor(activeTask.quadrant) : '#c9cdd2', flexShrink: 0 },
                 }),
                 h('span', { style: { flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
-                  activeTask ? `本轮任务:${activeTask.title}` : '选择一个任务（可选）'),
+                  activeTask ? trRaw('本轮任务:{title}', { title: activeTask.title }) : '选择一个任务（可选）'),
                 h('span', { 'aria-hidden': true }, '›')),
               taskOpen && h('div', {
                 role: 'listbox', 'aria-label': '选择任务',
@@ -2403,7 +2563,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
                   style: { ...taskOpt(t.id === snap.activeTaskId), width: '100%' },
                 },
                   h('span', { 'aria-hidden': true, style: { color: qColor(t.quadrant) } }, '●'),
-                  ` ${t.title}`)))),
+                  raw(` ${t.title}`))))),
             // 主控制行
             h('div', { className: 'pp-primaryrow' },
               h('button', { type: 'button', className: 'pp-startbtn', onClick: onStartClick }, startLabel),
@@ -2457,8 +2617,10 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
               proposals.map(p => {
                 const payload = safeParse(p.payload)
                 const desc = p.type === 'task_create'
-                  ? `新建任务「${payload.title}」 ${payload.quadrant ?? 'B'} 🍅×${payload.estimatedPomodoros ?? 1}`
-                  : `修改任务 ${payload.taskId}: ${JSON.stringify(payload.patch ?? {})}`
+                  ? trRaw('新建任务「{title}」 {quadrant} 🍅×{n}', {
+                      title: payload.title ?? '', quadrant: payload.quadrant ?? 'B', n: payload.estimatedPomodoros ?? 1,
+                    })
+                  : trRaw('修改任务 {taskId}: {patch}', { taskId: payload.taskId, patch: JSON.stringify(payload.patch ?? {}) })
                 return h('div', { key: p.id, className: 'pp-proposalrow' },
                   h('span', { style: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, desc),
                   h('button', {
@@ -2511,15 +2673,15 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
                   h('div', { style: { display: 'grid', gap: 8, marginTop: 10 } },
                     doneList.map(t => h('div', { key: t.id, style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, opacity: .75 } },
                       h('span', { 'aria-hidden': true, style: { color: qColor(t.quadrant) } }, '●'),
-                      h('span', { style: { flex: 1, textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, t.title),
+                      h('span', { style: { flex: 1, textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, raw(t.title)),
                       h('span', null, `🍅${t.completedPomodoros ?? 0}`),
                       h('button', {
-                        type: 'button', 'aria-label': `重新打开任务 ${t.title}`,
+                        type: 'button', 'aria-label': trRaw('重新打开任务 {title}', { title: t.title }),
                         onClick: () => void api.taskPatch(t.id, { status: 'active', completedAt: null }).then(refresh),
                         style: miniBtn(),
                       }, '↺'),
                       h('button', {
-                        type: 'button', 'aria-label': `删除任务 ${t.title}`,
+                        type: 'button', 'aria-label': trRaw('删除任务 {title}', { title: t.title }),
                         onClick: () => void api.taskDelete(t.id).then(refresh),
                         style: { ...miniBtn(), color: '#df4e42' },
                       }, '×')))))
@@ -2533,14 +2695,11 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
               }, `自定义装扮 · ${fragCount2}/10　›`)),
             h('div', { className: 'pp-petcontent' },
               h('div', { style: { textAlign: 'center' } },
-                h('button', {
-                  type: 'button', className: `pp-pet-live${petPopClass()}`,
-                  'aria-label': '摸摸番茄精灵', title: '点我互动',
-                  onPointerMove: onPetMove, onPointerLeave: onPetLeave, onClick: pokePet,
-                  style: { border: 0, background: 'transparent', padding: 0, cursor: 'pointer' },
-                },
-                  petSvg(snap.pet.stage, snap.pet.mood, snap.running?.status, 112, snap.pet.outfitId, gaze),
-                  petBubble && h('span', { className: 'pp-pet-bubble', role: 'status' }, petBubble))),
+                h(PetAvatar, {
+                  snap, status: snap.running?.status, size: 112, className: `pp-pet-live${petPopClass()}`,
+                  ariaLabel: '摸摸番茄精灵', title: '点我互动', onClick: pokePet,
+                  bubble: petBubble && h('span', { className: 'pp-pet-bubble', role: 'status' }, petBubble),
+                })),
               h('div', { className: 'pp-petinfo' },
                 h('h3', null, `Lv.${snap.pet.level}　${stage}`),
                 h('div', {
@@ -2615,12 +2774,12 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       },
         h('div', { className: 'pp-bar', style: { background: t.status === 'done' ? '#c7d5c9' : st.color }, 'aria-hidden': true }),
         h('input', {
-          type: 'checkbox', 'aria-label': `完成任务 ${t.title}`, checked: false,
+          type: 'checkbox', 'aria-label': trRaw('完成任务 {title}', { title: t.title }), checked: false,
           onChange: () => void api.taskPatch(t.id, { status: 'done', completedAt: Date.now() }).then(refresh),
         }),
         h('div', { className: 'pp-taskname' },
-          h('span', null, t.title),
-          gname && h('span', { className: 'pp-tag', style: { background: 'var(--pp-gray-soft)', color: 'var(--pp-muted)' } }, `#${gname}`)),
+          h('span', null, raw(t.title)),
+          gname && h('span', { className: 'pp-tag', style: { background: 'var(--pp-gray-soft)', color: 'var(--pp-muted)' } }, '#', raw(gname))),
         h('div', { className: 'pp-taskmeta' },
           h('span', { className: 'pp-strand', role: 'img', 'aria-label': `番茄串 ${t.completedPomodoros ?? 0}/${t.estimatedPomodoros ?? 0}` },
             dots.map((filled, i) => h('span', {
@@ -2629,10 +2788,10 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
             }))),
           h('span', { className: 'pp-count' }, `${t.completedPomodoros ?? 0}/${t.estimatedPomodoros ?? 0}`),
           h('span', { className: 'pp-taskhover' },
-            h('button', { type: 'button', 'aria-label': `对「${t.title}」开钟`, onClick: onStart, style: miniBtn() }, '▶'),
+            h('button', { type: 'button', 'aria-label': trRaw('对「{title}」开钟', { title: t.title }), onClick: onStart, style: miniBtn() }, '▶'),
             !compact && h('button', {
-              type: 'button', 'aria-label': `删除任务 ${t.title}`,
-              onClick: () => { if (confirm(`删除任务「${t.title}」?`)) void api.taskDelete(t.id).then(refresh) },
+              type: 'button', 'aria-label': trRaw('删除任务 {title}', { title: t.title }),
+              onClick: () => { if (confirm(trf('删除任务「{title}」?', { title: t.title }))) void api.taskDelete(t.id).then(refresh) },
               style: { ...miniBtn(), color: '#df4e42' },
             }, '×'))),
         h('span', { 'aria-hidden': true, style: { color: 'var(--pp-muted)' } }, '›'))
@@ -2734,14 +2893,21 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       return /^(time sampled|elapsed since|browser time zone|system reminder|runtime context|available skills|skill catalog|plan mode)/i.test(s)
     }
     const cleanSessionLabel = (s) => {
-      const raw = String(s.dshSessionLabel ?? '').replace(/\s+/g, ' ').trim()
-      if (raw && !looksInjectedLabel(raw)) return raw.length > 32 ? `${raw.slice(0, 31)}…` : raw
+      const label = String(s.dshSessionLabel ?? '').replace(/\s+/g, ' ').trim()
+      if (label && !looksInjectedLabel(label)) {
+        const text = label.length > 32 ? `${label.slice(0, 31)}…` : label
+        return { node: raw(text), text, data: true }
+      }
       if (s.dshCwdName) {
         const cwd = String(s.dshCwdName)
-        return `${cwd.length > 18 ? `${cwd.slice(0, 17)}…` : cwd} 会话`
+        const short = cwd.length > 18 ? `${cwd.slice(0, 17)}…` : cwd
+        return { node: trRaw('{cwd} 会话', { cwd: short }), text: trf('{cwd} 会话', { cwd: short }), data: false }
       }
-      if (s.dshSessionId) return `会话 ${String(s.dshSessionId).slice(0, 8)}`
-      return '未命名会话'
+      if (s.dshSessionId) {
+        const id = String(s.dshSessionId).slice(0, 8)
+        return { node: trRaw('会话 {id}', { id }), text: trf('会话 {id}', { id }), data: false }
+      }
+      return { node: '未命名会话', text: '未命名会话', data: false }
     }
     const SESS_COLORS = ['#5b76d6', '#7f95e8', '#a3b2f0', '#c3ccf6', '#dfe4fb']
     const fmtHours = (minutes) => `${Math.round((Number(minutes) || 0) / 60 * 10) / 10}`
@@ -2753,12 +2919,17 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
       const map = new Map()
       for (const s of rows) {
         const key = s.dshSessionId ?? s.dshSessionLabel ?? s.dshCwdName ?? 'unknown'
-        const cur = map.get(key) ?? { key, label: cleanSessionLabel(s), cwdName: s.dshCwdName ?? null, count: 0, minutes: 0, agentTools: 0 }
+        const clean = cleanSessionLabel(s)
+        const cur = map.get(key) ?? { key, labelNode: clean.node, labelText: clean.text, cwdName: s.dshCwdName ?? null, count: 0, minutes: 0, agentTools: 0 }
         cur.count += 1
         cur.minutes += Number(s.focusMinutes) || 0
         cur.agentTools += Number(s.agentToolCount) || 0
         if (!cur.cwdName && s.dshCwdName) cur.cwdName = s.dshCwdName
-        if (!cur.label || cur.label === '未命名会话') cur.label = cleanSessionLabel(s)
+        if (!cur.labelText || cur.labelText === '未命名会话') {
+          const next = cleanSessionLabel(s)
+          cur.labelNode = next.node
+          cur.labelText = next.text
+        }
         map.set(key, cur)
       }
       const all = [...map.values()].sort((a, b) => b.minutes - a.minutes)
@@ -2772,7 +2943,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
             `${all.length} 个会话 · ${fmtHours(total)}h`, totalTools > 0 ? ` · 🤖 ${totalTools} 次工具` : '')),
         h('div', {
           className: 'pp-sharebar', role: 'img', 'aria-label': '会话时长占比',
-          title: top.map(r => `${r.label} ${fmtHours(r.minutes)}h`).join(' · '),
+          title: raw(top.map(r => `${r.labelText} ${fmtHours(r.minutes)}h`).join(' · ')),
         }, top.map((r, i) => h('i', {
           key: r.key,
           style: { width: `${Math.max(3, Math.round(r.minutes / total * 100))}%`, background: SESS_COLORS[i] ?? SESS_COLORS[4] },
@@ -2780,19 +2951,18 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         h('div', { className: 'pp-sesslist' },
           top.map((r, i) => h('div', {
             key: r.key, className: 'pp-sessrow',
-            title: [r.label, r.cwdName && `📁 ${r.cwdName}`, `${fmtHours(r.minutes)}h`].filter(Boolean).join(' · '),
+            title: raw([r.labelText, r.cwdName && `📁 ${r.cwdName}`, `${fmtHours(r.minutes)}h`].filter(Boolean).join(' · ')),
           },
             h('span', {
               className: 'pp-sessavatar', 'aria-hidden': true,
               style: { background: `linear-gradient(135deg, ${SESS_COLORS[i] ?? SESS_COLORS[4]}, #4a63c8)` },
             }, String(i + 1)),
             h('div', { className: 'pp-sessmain' },
-              h('b', null, r.label),
-              h('span', null, [
-                r.cwdName && `📁 ${r.cwdName}`,
+              h('b', null, r.labelNode),
+              h('span', null,
+                r.cwdName && raw(`📁 ${r.cwdName} · `),
                 `${r.count} 个番茄`,
-                r.agentTools > 0 && `🤖 ${r.agentTools}`,
-              ].filter(Boolean).join(' · '))),
+                r.agentTools > 0 && ` · 🤖 ${r.agentTools}`)),
             h('span', { className: 'pp-sesstime' }, `${fmtHours(r.minutes)}h`)))),
         h('p', { className: 'pp-agentcard-note' }, '番茄自动归属到当时的 DSH 会话与工作区'))
     }
@@ -2816,12 +2986,12 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
         h('div', { className: 'pp-skilllist' },
           items.slice(0, 8).map(s => h('button', {
             key: s.name, type: 'button', className: 'pp-skillrow',
-            title: `${s.name}${s.description ? ` — ${s.description}` : ''}`, onClick: () => copy(s.name),
+            title: raw(`${s.name}${s.description ? ` — ${s.description}` : ''}`), onClick: () => copy(s.name),
           },
             h('span', { className: 'pp-skillicon', 'aria-hidden': true }, '🧩'),
             h('span', { className: 'pp-skillmain' },
-              h('b', null, s.name),
-              h('small', null, s.description || '无描述')),
+              h('b', null, raw(s.name)),
+              h('small', null, s.description ? raw(s.description) : '无描述')),
             h('span', { className: `pp-skillact${copied === s.name ? ' done' : ''}` }, copied === s.name ? '已复制' : '复制')))),
         h('p', { className: 'pp-agentcard-note' }, '在对话里输入 /名称 即可调用'))
     }
@@ -3346,7 +3516,7 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
             h('label', { htmlFor: 'pp-task-group' }, '分组'),
             h('select', { id: 'pp-task-group', value: groupId, onChange: e => setGroupId(e.target.value) },
               h('option', { value: '' }, '无分组'),
-              groups.map(g => h('option', { key: g.id, value: g.id }, `# ${g.name}`)))),
+              groups.map(g => h('option', { key: g.id, value: g.id }, '# ', raw(g.name))))),
           h('div', null,
             h('label', null, '优先级（象限）'),
             h('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
@@ -3605,6 +3775,15 @@ input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-in
     /* ---------------- register ---------------- */
     return {
       inject: ['slots', 'locale'],
+      /** 仅供测试与构建脚本使用，不参与任何插槽注册。 */
+      __test: {
+        tr, trf, trRaw, raw, isRaw, h, EN_TEXT, PATTERNS,
+        localeState: i18nStore,
+        setLocale(locale) {
+          i18nStore.locale = String(locale || 'zh')
+          i18nStore.dict = buildDict()
+        },
+      },
       apply(ctx) {
         // v0.9: 先装运行时（拿到当前语言），再按语言注册官方词典（供设置页语言列表）
         installLocale(ctx)

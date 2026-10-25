@@ -28,6 +28,14 @@
   "publishConfig": {
     "access": "public"
   },
+  "engines": {
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "scripts": {
+    "test": "node --test",
+    "sync:i18n": "node scripts/sync-i18n.mjs",
+    "prepublishOnly": "npm test"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
