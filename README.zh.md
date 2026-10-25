@@ -1,65 +1,148 @@
-# 番茄精灵（Pomodoro Pet）
+# 🍅 番茄精灵（Pomodoro Pet）
 
-DeepSeek Harness Web 的专注伙伴：番茄钟、四象限任务、随专注成长的桌宠，以及一个把会话、工作区与技能串成专注计划的 Agent 工具。
+DSH Web 的专注小搭档：一个番茄钟、一套四象限任务，和一只跟着你专注一起长大的桌宠。
+
+![番茄精灵专注面板](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/focus-panel.png)
+
+**版本 0.9.2** · 需要 DSH Web `0.2.1-rc.2` 及以上 · 零 npm 依赖 · 数据只存本机
 
 [English](README.md) | **中文**
 
-- 版本：**0.9.1**
-- 运行环境：DSH Web（`0.2.1-rc.2` 及以上，本版本在 `0.2.1-rc.2` 上开发与验证）
-- 依赖：**零 npm 依赖** —— Host 侧为纯 ESM，Client 侧为注入式 React UI
-- 数据仅存本机：不上传、无遥测、不发起远程请求
+## 一句话说清
+
+点开 DSH 侧边栏的 🍅，开始一轮专注。专注结束，桌宠涨经验、数据进统计；任务用四象限排好优先级，Agent 也能帮你开钟、记任务——但改任务前一定会先问你。
+
+装好之后你会看到：
+
+- 侧边栏多一个 🍅 **番茄精灵** 入口
+- 聊天页右下角多一只桌宠胶囊，抬头就能看到剩余时间
+- 专注、统计、设置三个标签页，主题和语言自动跟随 DSH
 
 ## 功能
 
-- **番茄钟。** 标准 / 深度 / 冲刺三种模式，5–120 分钟自定义时长，暂停 / 继续 / 停止，自动短休与长休，DSH 重启后按截止时间恢复，并有周期对账扫描补偿漏触发的结算。
-- **四象限任务。** 任务带象限（A 紧急重要、B 重要不紧急、C 紧急不重要、D 其他）、可选分组、预估番茄数与 active / done / archived 状态。可跨象限拖动，也可直接对任务开钟。
-- **提议闭环。** Agent 只能「提议」创建或修改任务；提议进入队列，用户确认前不会写入任何数据。
-- **会成长的桌宠。** 完成专注获得经验值，等级解锁四个进化阶段；心情随专注、休息、放弃和升级变化；18 个成就产出装扮碎片，碎片可兑换装扮。
-- **有意义的统计。** 近半年 / 全年专注热力图、每周专注时长、时段分布、象限分布、按会话与工作区归属、累计数据、目标完成率与连续天数。
-- **报告与导出。** 周报 / 月报、竖版与横版分享卡片（PNG），以及任务、统计、成就的 JSON 备份。
-- **Agent 联动。** `pomodoro_pet` 工具支持开始 / 暂停 / 继续 / 停止、查询状态与统计、列出任务、提议修改任务、对已有任务开钟、列出工作区技能、生成只读专注计划，以及汇总当日 Agent 活动。
-- **本地隐私。** 会话名、工作区路径、工具活动与任务标题只在本机展示；任务标题默认隐藏，Agent 上下文不进入导出文件。
+### ⏱ 专注计时
 
-## 环境要求
+- 三种节奏：**标准 25 分钟 / 深度 50 分钟 / 冲刺 15 分钟**
+- 单轮时长也可以自定义，5–120 分钟随意调
+- 开始、暂停、继续、停止；专注结束自动进入短休，几轮后进入长休
+- DSH 重启后按截止时间恢复当前轮次，漏掉的结算会补上
+- 提示音 + 桌面通知，页面切到后台也能收到提醒
 
-- DSH Web profile，Host 侧需提供 `storageDomain`、`webServer`、`tools`、`timer`，Client 侧需提供 `slots`、`locale`；官方 `web` profile 已全部具备。
-- 支持 `localStorage` 的现代浏览器。桌面通知与提示音需要浏览器授权，localhost 视为安全上下文。
-- 使用插件不需要 Node.js 构建；Node.js 仅用于运行 `install.sh` 与单元测试。
+| 模式 | 默认时长 | 适合 |
+| --- | --- | --- |
+| 标准 | 25 分钟 | 日常任务、例行工作 |
+| 深度 | 50 分钟 | 写代码、写文档这类需要沉浸的事 |
+| 冲刺 | 15 分钟 | 进入状态，或处理零碎事项 |
+
+### ✅ 四象限任务
+
+- 任务按 **A 紧急重要 / B 重要不紧急 / C 紧急不重要 / D 其他** 分类
+- 给任务预估番茄数，开钟时直接绑定任务，经验按所属象限结算
+- 支持拖拽换象限、完成 / 重新打开、按象限筛选
+- 可以建分组，把同一类任务收在一起
+
+### 🐣 会成长的桌宠
+
+- 每完成一轮专注获得经验，**青芽 → 红果 → 发光果 → 彩虹王** 一路进化
+- 心情会随专注、休息、放弃和升级变化；可以喂食、打招呼
+- 18 个成就，达成后奖励装扮碎片；10 个碎片换一件装扮，共 4 件
+- 桌宠大小可调、位置可拖；收起后就是一枚小胶囊
+
+![桌宠胶囊](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/pet-capsule.png)
+
+*忙碌时把桌宠收进聊天页右下角的胶囊：倒计时、暂停、停止都在手边。*
+
+### 📊 看得见的专注数据
+
+- 近半年 / 全年专注热力图，每天专注了多久一眼可见
+- 每周专注时长、时段分布（上午 / 下午 / 晚上 / 深夜）、象限分布
+- 按会话与工作区归属，能看出时间花在了哪个项目上
+- 周报 / 月报、竖版 / 横版分享卡片（PNG）、JSON 备份
+- Agent 动态：DSH 是否运行、今天用了多少工具、跑了多少步
+
+### 🤖 和 Agent 一起专注
+
+插件给 Agent 提供了一个 `pomodoro_pet` 工具：
+
+- 让 Agent 开始 / 暂停 / 停止番茄钟，或查询当前专注状态
+- 读取最近统计、列出任务
+- 让 Agent **提议**新建或修改任务——只有你在界面上确认后才会真正写入
+- 结合当前会话、任务和可用技能，生成一份只读的专注计划
+
+在 DSH 对话里直接说就行：
+
+- “开始一轮 25 分钟专注”
+- “帮我看看今天的专注统计”
+- “把「写周报」加进 B 象限，预估 2 个番茄”
+
+### 🔒 数据只在你自己的机器上
+
+- 不上传、无遥测、不发起远程请求
+- 会话名、工作区路径、任务标题只在本机展示，任务标题默认隐藏
+- Agent 上下文不会进入导出文件
+- 数据保存在 `$DSH_HOME/storages/pomodoro_pet.json`，拷走这个文件就能迁移
 
 ## 安装
 
-更详细的中文步骤见 [INSTALL.md](INSTALL.md)。
+安装前需要：**DSH Web**（`0.2.1-rc.2` 及以上），以及一个支持 `localStorage` 的现代浏览器。插件本身零 npm 依赖，不需要构建。
 
-### 一键脚本
+### 方式一：从 npm 安装（最快）
+
+插件已发布到 npm，包名 `dsh-pomodoro-pet`。
+
+在 DSH 里打开 **插件 → 已安装 → 添加插件**，输入 `dsh-pomodoro-pet`，点 **安装**。或在终端执行：
 
 ```bash
-tar -xzf dsh-pomodoro-pet-0.9.1.tar.gz
-cd dsh-pomodoro-pet
-./install.sh                      # 默认安装到 ~/dsh-plugins，profile 为 web
-# ./install.sh --dest ~/my-plugins --profile web
-# ./install.sh --home /path/to/.dsh --profile web
+dsh plugin add dsh-pomodoro-pet
 ```
 
-脚本会拷贝插件、写入 profile 的 `dependencies` 与 `dsh.profile.bundles`、建立 `node_modules` 软链，并向 `cordis.patch.yml` 追加插件行。重复执行是安全的。完成后重启 `dsh web`；Host 侧代码只在启动时加载。
+然后重启 `dsh web` 并刷新浏览器。这条路径不受插件市场索引缓存影响。
 
-### 手动安装
+### 方式二：从插件市场安装
 
-1. 把本目录放到固定位置，例如 `~/dsh-plugins/dsh-pomodoro-pet`。
-2. 在 `~/.dsh/profiles/web/package.json` 中加入依赖与 bundle：
+1. 打开 DSH 的 **插件** 页，启用实验性的 **自定义插件索引**，进入 **发现（Discover）**
+2. 点 **添加索引源**，粘贴：
 
-   ```json
-   {
-     "dependencies": {
-       "dsh-pomodoro-pet": "link:/home/<你的用户名>/dsh-plugins/dsh-pomodoro-pet"
-     },
-     "dsh": {
-       "profile": {
-         "bundles": ["...原有 bundle...", "dsh-pomodoro-pet"]
-       }
-     }
-   }
+   ```text
+   https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/market/index.json
    ```
 
+3. 找到 **番茄精灵 / Pomodoro Pet**，点击安装
+4. 重启 `dsh web`，然后刷新浏览器
+
+> 索引走 jsDelivr 分发（插件市场要求直接返回 `200` 且不重定向）。新版本发布后可能有最多 12 小时的缓存，稍等即可。网络可直连 GitHub 时，也可以用 `https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json`。
+
+### 方式三：一键脚本
+
+```bash
+tar -xzf dsh-pomodoro-pet-0.9.2.tar.gz
+cd dsh-pomodoro-pet
+./install.sh                # 默认装到 ~/dsh-plugins，profile 为 web
+```
+
+脚本会自动完成「拷贝目录 → 注册到 profile → 建软链 → 注入 patch」，重复执行也安全。装完重启 DSH：
+
+```bash
+# 在运行 dsh web 的终端按 Ctrl+C，再重新启动
+dsh web
+```
+
+需要自定义位置或 profile：
+
+```bash
+./install.sh --dest ~/my-plugins --profile web
+./install.sh --home /path/to/.dsh --profile web
+```
+
+### 方式四：手动安装
+
+<details>
+<summary>展开手动步骤（适合想弄清每一步在做什么的人）</summary>
+
+1. 把插件目录放到固定位置，例如 `~/dsh-plugins/dsh-pomodoro-pet`
+2. 编辑 `~/.dsh/profiles/web/package.json`：
+   - `dependencies` 增加 `"dsh-pomodoro-pet": "link:/home/<你的用户名>/dsh-plugins/dsh-pomodoro-pet"`
+   - `dsh.profile.bundles` 末尾增加 `"dsh-pomodoro-pet"`
 3. 建立软链：
 
    ```bash
@@ -67,7 +150,7 @@ cd dsh-pomodoro-pet
    ln -sfn ~/dsh-plugins/dsh-pomodoro-pet ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet
    ```
 
-4. 向 `~/.dsh/profiles/web/cordis.patch.yml` 追加：
+4. 在 `~/.dsh/profiles/web/cordis.patch.yml` 追加：
 
    ```yaml
    - insert:
@@ -76,202 +159,83 @@ cd dsh-pomodoro-pet
          config: {}
    ```
 
-5. 重启 `dsh web` 并打开 Web UI。下文示例使用 DSH 默认端口 `3080`；如果你用 `--port` 指定过端口（例如 `8080`），请换成实际端口。
+5. 重启 `dsh web`，刷新浏览器
 
-### 从插件市场索引安装
+更详细的逐步说明见 [INSTALL.md](https://github.com/gitByteFree/dsh-pomodoro-pet/blob/main/INSTALL.md)。
 
-DSH 本身不内置索引源。本仓库发布一个 format-1 索引：
+</details>
 
-```text
-https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/market/index.json
-```
-
-1. 打开 **插件** 页，启用实验性的 **自定义插件索引** bundle，进入 **发现（Discover）** 标签。
-2. 选择 **添加索引源**，粘贴上面的 URL。
-3. 选中 Pomodoro Pet 并安装列表中的版本。DSH 会按索引记录的 commit 固定安装这个 Git 仓库。
-
-市场要求索引直接返回 `200` 且不重定向，因此索引通过 jsDelivr 分发；网络可直连 GitHub 时，`https://raw.githubusercontent.com/gitByteFree/dsh-pomodoro-pet/main/market/index.json` 提供同一份文件。两个地址都跟随 `main` 分支；jsDelivr 在边缘节点缓存 12 小时，浏览器端缓存更久，因此新版本可能需要一段时间才会出现。每个列出的版本都固定到不可变的 commit。
-
-由于本包是本地私有包，索引条目使用 Git 源，不发布到 npm。
-
-### 验证
+### 验证装好了没
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/state
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/context
 ```
 
-`3080` 是 `dsh web` 的默认端口；若启动时用了 `--port`（例如 `8080`），请替换成实际端口。两条请求都应返回 `200`。界面侧：侧边栏出现番茄图标，设置 → 关于显示版本 `0.9.1`，右下角出现可拖动的桌宠胶囊。
+返回 `200` 说明 Host 端加载成功。`3080` 是 `dsh web` 的默认端口；如果你用 `--port` 启动过（例如 `8080`），换成实际端口。
 
-## 使用
+界面上应该看到：
 
-### 面板与快捷键
+- 侧边栏出现 🍅 **番茄精灵**
+- 右下角出现可拖动的桌宠胶囊
+- 设置 → 关于显示版本 `0.9.2`
 
-侧边栏入口打开三个标签：**专注**、**统计**、**设置**。面板是普通的 DSH Client bundle，主题跟随 DSH（设置 → 通用 → 外观），语言跟随 DSH 语言设置。
+## 使用速览
+
+### 快捷键
+
+面板打开时可用：
 
 | 按键 | 作用 |
 | --- | --- |
-| `Space` | 开始 / 暂停 / 继续当前一轮 |
+| `Space` | 开始 / 暂停 / 继续 |
 | `S` | 停止当前一轮（休息中则跳过休息） |
-| `1` / `2` / `3` | 空闲或待开始时切换 标准 / 深度 / 冲刺 |
-| `?` 或 `Shift` + `/` | 打开或关闭快捷键说明 |
-| `Esc` | 关闭弹窗，或退出输入框 |
-| 收纳状态下的桌宠按 `Enter` / `Esc` | 展开 / 收起桌宠 |
+| `1` / `2` / `3` | 切换 标准 / 深度 / 冲刺 |
+| `?` | 打开或关闭快捷键说明 |
+| `Esc` | 关闭弹窗 / 退出输入框 |
 
-快捷键仅在面板挂载时生效。焦点位于输入框、文本域、下拉框、可编辑元素或弹窗内时，只响应 `Esc`。
+> 快捷键只在番茄精灵面板打开时生效；光标在输入框或弹窗里时只响应 `Esc`。停止一轮专注算放弃：没有经验、心情 −1、连续轮次清零；停止休息没有惩罚。
 
-停止一轮专注视为放弃：不获得经验、心情 −1、连续轮次清零。停止休息或等待中的轮次则直接跳过，没有惩罚。
+### 三个标签页
 
-### 专注模式
+- **专注**：计时器、当前任务、今日进度、桌宠状态、任务分布
+- **统计**：热力图、趋势、时段 / 象限分布、报告、分享卡片
+- **设置**：时长、提醒、桌宠大小、统计时区、数据导出
 
-| 模式 | 默认时长 | 经验倍率 |
-| --- | --- | --- |
-| 标准 | 25 分钟 | 1.0 |
-| 深度 | 50 分钟 | 1.2 |
-| 冲刺 | 15 分钟 | 0.8 |
+![偏好设置](https://cdn.jsdelivr.net/gh/gitByteFree/dsh-pomodoro-pet@main/png/settings.png)
 
-自定义时长范围为 5–120 分钟，会覆盖默认值。轮次按配置的短休 / 长休节奏推进，每完成 `roundsPerLong` 轮进入一次长休。
-
-### 任务
-
-- 象限：A 紧急重要、B 重要不紧急、C 紧急不重要、D 其他。
-- 任务字段：标题、象限、可选分组、预估番茄数、已完成番茄数、状态（`active`、`done`、`archived`）。
-- 支持按象限过滤、跨象限拖动、完成 / 重新打开，以及对 `active` 任务开钟。
-- Agent 创建或修改的任务先进入 **待确认提议** 区，确认后才落库，拒绝则丢弃。
-- 对任务开钟时，本轮经验按任务所属象限计算，并在会话记录中保存任务标题快照。
-
-### 桌宠成长
-
-| 等级 | 阶段 |
-| --- | --- |
-| 1 | 青芽 |
-| 3 | 红果 |
-| 5 | 发光果 |
-| 7 | 彩虹王 |
-
-- 单次专注经验：`round(象限基数 × 模式倍率 × 专注分钟 / 25)`，最少 1。象限基数为 A 10、B 12、C 8、D 5；未绑定任务按 10 计算。
-- 完成休息获得 2 经验；新的连续打卡获得 5 点额外经验。
-- 从等级 `L` 升到下一级需要 `30 + 20 × L` 经验。
-- 心情范围 0–5，初始为 3。放弃一轮专注降低 1，升级提升 1。
-- 喂食提升 1 点心情，受 `dailyFeedLimit`（默认 3）限制；打招呼不改变心情。两者都不会增加经验。
-- 18 个成就覆盖普通到传说稀有度，奖励 0–10 个装扮碎片；10 个碎片可兑换一件装扮，共 4 件。
-
-### 统计与报告
-
-- 近半年或全年专注热力图，悬停查看单日专注时长。
-- 每周专注时长柱状图、时段分布（上午 / 下午 / 晚上 / 深夜）、象限分布。
-- 汇总：专注总时长、累计番茄、最长连续、目标完成率。
-- 按会话与工作区归属，并列出当前会话可用的工作区技能。
-- Agent 动态：DSH 是否运行、最近使用的工具、今日工具与步数。
-- 周报 / 月报、竖版 / 横版分享卡片（PNG）、JSON 备份。
-
-### 设置
-
-- 番茄钟：专注时长、短休、长休、长休间隔、每日目标。
-- 声音与提醒：提示音、音量、桌面通知、动画效果。
-- 外观：完全跟随 DSH，无独立主题开关。
-- 桌宠：大小（0.5–2.0×）与位置归位。
-- 本地数据来源：桌宠工具气泡与状态点、最近会话与工作区、会话 / 工具事件（仅展示）。
-- 统计时区：跨日归属按此时区计算，修改不追溯历史。
-- 导出 JSON、操作审计（最多 1000 条）与版本信息。
-
-## Agent 工具：`pomodoro_pet`
-
-Host 注册一个原始工具定义，其描述与参数面向模型；所有调用与 UI 操作走同一条串行命令链。
-
-| Action | 参数 | 作用 |
-| --- | --- | --- |
-| `start` | `focusMinutes`、`taskId`、`mode` | 开始一轮专注；已有进行中的轮次时返回 `busy`。 |
-| `pause` / `resume` / `stop` | — | 暂停 / 继续 / 停止当前轮次；休息中停止等于跳过休息。 |
-| `status` | — | 当前轮次、宠物阶段 / 等级 / 心情、今日完成数。 |
-| `stats` | `days`（1–90，默认 7） | 最近数日与象限分布。 |
-| `pet` | `petAction`：`feed` 或 `greet` | 仅影响心情；喂食有每日上限，不增加经验。 |
-| `task_list` | `quadrant`、`status` | 只读任务列表。 |
-| `task_create` | `title`、`quadrant`、`estimatedPomodoros`、`groupId` | 写入创建提议；用户确认前不落库。 |
-| `task_start` | `taskId`、`focusMinutes` | 对已有 `active` 任务开始一轮专注。 |
-| `task_update` | `taskId`、`patch`、`title`、`estimatedPomodoros`、`groupId` | 写入修改提议。 |
-| `skill_list` | — | 列出工作区技能（60 秒缓存）。 |
-| `focus_plan` | `goal`、`minutes` | 结合当前会话、任务与匹配技能生成只读专注计划。 |
-| `agent_summary` | `days`（1–90，默认 7） | 当日 Agent 活动与专注协作摘要。 |
-
-约束：
-
-- Agent 不能修改经验值、已完成番茄数或历史记录。
-- 任务变更只能以提议形式写入，必须由 UI 确认。
-- 每次工具调用都会写入审计日志（`auditEnabled` 开启时），最多保留 1000 条 / 90 天。
-- `focus_plan` 与 `skill_list` 不写入任何数据。
-
-## HTTP API
-
-所有路由注册在 `ctx.webServer` 上，位于 DSH 连接信任围栏之后，供 Web UI 会话访问。
-
-| 方法 | 路径 | 用途 |
-| --- | --- | --- |
-| `GET` | `/dsh-pomodoro/events` | Server-Sent Events：快照与 Agent 上下文推送 |
-| `GET` | `/dsh-pomodoro/state` | 完整快照 |
-| `POST` | `/dsh-pomodoro/action` | `start`、`pause`、`resume`、`stop`、`setTask`、`setMode`、`redeemOutfit` |
-| `GET` / `POST` | `/dsh-pomodoro/settings` | 读取或修改设置 |
-| `GET` | `/dsh-pomodoro/history` | 最近数日 |
-| `GET` / `POST` / `PATCH` / `DELETE` | `/dsh-pomodoro/tasks` 与 `/tasks/:id` | 任务 CRUD |
-| `GET` / `POST` / `PATCH` / `DELETE` | `/dsh-pomodoro/groups` 与 `/groups/:id` | 分组 CRUD |
-| `GET` | `/dsh-pomodoro/heatmap`、`/trend`、`/quadrants`、`/hours` | 聚合数据 |
-| `GET` | `/dsh-pomodoro/report?period=week\|month` | 周报或月报 |
-| `GET` | `/dsh-pomodoro/achievements` | 成就目录与库存 |
-| `GET` | `/dsh-pomodoro/audit` | 审计日志 |
-| `GET` / `POST` | `/dsh-pomodoro/proposals` | 列出、确认或拒绝提议 |
-| `GET` | `/dsh-pomodoro/context` | 会话、工作区、技能与 Agent 活动 |
-| `GET` | `/dsh-pomodoro/days`、`/sessions` | 每日与会话聚合 |
-
-## 数据与存储
-
-- Domain storage：`storageDomain: pomodoro_pet`，默认单文件布局下持久化到 `$DSH_HOME/storages/pomodoro_pet.json`。
-- 数据表：`pets`、`sessions`、`days`、`settings`、`tasks`、`groups`、`achievements`、`inventory`、`proposals`、`audit_log`。
-- 迁移：停止 DSH，把 `pomodoro_pet.json` 拷贝到新机器的同一路径，再启动 DSH。宠物等级、任务、统计与成就会一并恢复。
-- 设备级偏好存在浏览器 `localStorage`，不随数据文件迁移：`pp-pet-pos`、`pp-pet-collapsed`、`pp-show-agent`、`pp-show-context`、`pp-seen-settlement`。
-
-## 开发
-
-插件没有构建步骤。`client.js` 是可直接提供的浏览器 bundle，英文词典已内联；`i18n-en.mjs` 是供修改的词典源文件，`locale/*.json` 提供侧边栏与页面元数据。
-
-```text
-index.js              Host 半：路由、工具、定时器效果、存储
-pet-engine.js         纯状态机：专注轮次、经验、心情、任务
-stats-engine.js       热力图、趋势、象限 / 时段分布、报告
-achievement-engine.js 18 个成就定义与判定
-agent-bridge.js       把 DSH 会话 / Agent / 工具活动折叠为上下文
-client.js             Client 半：完整 React UI
-i18n-en.mjs           英文词典源文件
-locale/*.json         本地化插件元数据
-install.sh            幂等安装脚本
-*.test.mjs            引擎与桥接单元测试
-```
-
-运行测试：
-
-```bash
-node --test engine.test.mjs v03-engine.test.mjs v04-engine.test.mjs agent-bridge.test.mjs
-```
-
-预期：107 个测试全部通过。修改 `client.js` 后刷新浏览器即可（客户端 bundle 有缓存时强制刷新）；修改任何 Host 文件都必须重启 `dsh web`。
+*设置页：番茄钟、声音与提醒、外观、Agent 联动、桌宠、统计、数据，一页调完。*
 
 ## 常见问题
 
-- **侧边栏没有图标或面板空白。** 先看 `dsh web` 日志里是否有 `pomodoro-pet` 报错，再确认 `cordis.patch.yml` 缩进正确、bundle 已加入 `dsh.profile.bundles`。
-- **`/dsh-pomodoro/state` 返回 404。** Host 半未加载。检查 bundle 列表、`node_modules` 软链，以及是否重启过 DSH。
-- **`Cannot find module 'dsh-pomodoro-pet'`。** 软链或 `link:` 路径不正确，检查 `~/.dsh/profiles/web/node_modules/`。
-- **改了 `client.js` 不生效。** 客户端 bundle 有缓存，强制刷新；Host 侧修改必须重启。
-- **快捷键没反应。** 仅在面板挂载且焦点不在输入框或弹窗内时生效。
-- **主题不跟随 DSH。** 插件读取 DSH 主题；修改「设置 → 通用 → 外观」后重启 DSH。
-- **收不到桌面通知。** 需要在浏览器中授权；后台标签页的通知还受浏览器策略限制。
+<details>
+<summary>展开排查清单</summary>
 
-## 卸载
+- **侧边栏没有图标 / 面板空白**：先看 `dsh web` 启动日志里有没有 `pomodoro-pet` 报错；再确认 `cordis.patch.yml` 缩进正确、bundle 已加入 `dsh.profile.bundles`
+- **`/dsh-pomodoro/state` 返回 404**：Host 端没加载。检查软链、bundle 列表，并确认重启过 `dsh web`
+- **`Cannot find module 'dsh-pomodoro-pet'`**：软链或 `link:` 路径不对，检查 `~/.dsh/profiles/web/node_modules/`
+- **改了 `client.js` 不生效**：客户端 bundle 有缓存，强制刷新；Host 端文件改动必须重启 `dsh web`
+- **收不到桌面通知**：需要在浏览器里授权通知，后台标签页还受浏览器策略限制
+- **主题 / 语言不跟随**：跟随 DSH 的「设置 → 通用 → 外观 / 语言」，改完重启 DSH
 
-1. 从 `~/.dsh/profiles/web/package.json` 的 `dsh.profile.bundles` 与 `dependencies` 中移除 `dsh-pomodoro-pet`。
-2. 删除 `cordis.patch.yml` 中的 `pomodoro-pet` 行。
-3. 删除软链：`rm ~/.dsh/profiles/web/node_modules/dsh-pomodoro-pet`。
-4. 重启 `dsh web`。
+</details>
 
-数据不会自动删除；需要清空时删除 `$DSH_HOME/storages/pomodoro_pet.json`。
+## 数据与卸载
+
+- 数据文件：`$DSH_HOME/storages/pomodoro_pet.json`
+- 迁移：关掉 DSH，把该文件拷到新机器同一路径，再启动即可
+- 卸载：从 `~/.dsh/profiles/web/package.json` 移除 `dsh-pomodoro-pet`，删掉 `cordis.patch.yml` 里对应的 4 行，删除 `node_modules` 软链，重启 `dsh web`
+- 卸载不会删除数据；要清空就删除上面的 JSON 文件
+
+## 开发者
+
+- 插件零构建：`client.js` 是可直接提供给浏览器加载的 bundle
+- Agent 工具参数、HTTP API、文件结构与存储表：见 [DEVELOPMENT.md](https://github.com/gitByteFree/dsh-pomodoro-pet/blob/main/DEVELOPMENT.md)
+- 跑单元测试：
+
+  ```bash
+  node --test engine.test.mjs v03-engine.test.mjs v04-engine.test.mjs agent-bridge.test.mjs
+  # 107 个测试全部通过
+  ```
 
 ## 许可证
 
