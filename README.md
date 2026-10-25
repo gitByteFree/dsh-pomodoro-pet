@@ -76,7 +76,7 @@ The script copies the plugin, adds it to the profile's `dependencies` and `dsh.p
          config: {}
    ```
 
-5. Restart `dsh web` and open `http://127.0.0.1:3080`.
+5. Restart `dsh web` and open the Web UI. The examples below use DSH's default port `3080`; if you start DSH with `--port` (for example `8080`), use that port instead.
 
 ### Install from the plugin index
 
@@ -101,7 +101,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/stat
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3080/dsh-pomodoro/context
 ```
 
-Both requests should return `200`. In the GUI, the sidebar shows a tomato icon, the panel reports version `0.9.1` under Settings → About, and a draggable pet capsule appears in the bottom-right corner.
+`3080` is `dsh web`'s default port; substitute your own `--port` value if it differs. Both requests should return `200`. In the GUI, the sidebar shows a tomato icon, the panel reports version `0.9.1` under Settings → About, and a draggable pet capsule appears in the bottom-right corner.
 
 ## Usage
 
