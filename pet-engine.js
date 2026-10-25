@@ -79,10 +79,27 @@ export function stageFor(level) {
  * Canonical `YYYY-MM-DD` for a UTC-ms instant under an IANA time zone.
  * en-CA yields ISO-formatted dates across all ICU builds.
  */
+/**
+ * Cached `Intl.DateTimeFormat` per time zone: constructing a formatter costs
+ * ~30µs, and `dayOf` runs once per heat-map cell (365×) and several times per
+ * snapshot. The cache is tiny and bounded; an invalid zone still throws on
+ * first use (the constructor is what validates it).
+ */
+const DAY_FORMATTERS = new Map()
+function dayFormatter(tz) {
+  const zone = tz || 'UTC'
+  let formatter = DAY_FORMATTERS.get(zone)
+  if (formatter) return formatter
+  formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
+  })
+  if (DAY_FORMATTERS.size >= 8) DAY_FORMATTERS.clear()
+  DAY_FORMATTERS.set(zone, formatter)
+  return formatter
+}
+
 export function dayOf(ms, tz) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date(ms))
+  return dayFormatter(tz).format(new Date(ms))
 }
 
 /** Days between two canonical dates (a.full string compare works: ISO). */

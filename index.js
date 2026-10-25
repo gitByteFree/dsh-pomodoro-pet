@@ -17,12 +17,15 @@ export const inject = ['storageDomain', 'webServer', 'tools', 'timer']
  * Zero-dependency: numeric range checks with defaults.
  */
 const CONFIG_FIELDS = {
-  focusMin: [1, 240, 25],
+  // D19/D20: 与 engine 的有效域保持一致（5–120），避免配置值被启动清洗静默钳制。
+  focusMin: [5, 120, 25],
   breakMin: [1, 60, 5],
   longBreakMin: [1, 120, 15],
-  roundsPerLong: [1, 12, 4],
+  roundsPerLong: [2, 12, 4],
   maxFocusMin: [1, 240, 120],
-  maxSessionDays: [1, 365, 30],
+  // 结算会话行的保留天数：boot 时清理更旧的行，避免 sessions 表把 single
+  // JSON 文件撑大（每次写入都会整文件重写 + fsync）。聚合数据 days 不受影响。
+  maxSessionDays: [1, 365, 90],
 }
 export const Config = {
   '~standard': {
@@ -118,6 +121,109 @@ async function readBody(req) {
   return Buffer.concat(chunks, size).toString('utf8')
 }
 
+/* ---------------- settings validation (D19/D20 shared table) -------- */
+
+/**
+ * 每个可写设置键的合法域 — POST /settings 的校验与 loadState 的脏数据清洗
+ * 共用同一张表，避免「接口收什么」和「启动信什么」漂移。
+ * 真数字越界钳制到边界（保留旧 clamp 语义）；其余非法值（非数字/非布尔/
+ * 未知枚举/不存在的 IANA 时区/非对象 petPosition）一律判非法。
+ */
+const SETTING_RULES = {
+  focusMin: { type: 'int', min: 5, max: 120 },
+  breakMin: { type: 'int', min: 1, max: 60 },
+  longBreakMin: { type: 'int', min: 1, max: 120 },
+  roundsPerLong: { type: 'int', min: 2, max: 12 },
+  soundEnabled: { type: 'bool' },
+  statsTimeZone: { type: 'timeZone' },
+  petPosition: { type: 'objectOrNull' },
+  petScale: { type: 'number', min: 0.5, max: 2 },
+  mode: { type: 'enum', values: ['standard', 'deep', 'sprint'] },
+  defaultQuadrant: { type: 'enum', values: ['A', 'B', 'C', 'D'] },
+  // v0.4 (§10.2 settings 全量键)
+  volume: { type: 'number', min: 0, max: 1 },
+  notificationEnabled: { type: 'bool' },
+  animationEnabled: { type: 'bool' },
+  dailyGoalPomodoros: { type: 'int', min: 1, max: 50 },
+  maxPauseMin: { type: 'int', min: 1, max: 60 },
+  auditEnabled: { type: 'bool' },
+  reconcileIntervalMs: { type: 'int', min: 10_000, max: 600_000 },
+  dailyFeedLimit: { type: 'int', min: 0, max: 20 },
+}
+
+/**
+ * 归一化单个设置值；非法返回 { valid:false }。
+ * 数字字符串按 Number() 友好接受，但必须本身落在合法域内：对字符串做静默
+ * 钳制会掩盖客户端 bug（`{"focusMin":"9999"}` 曾把非法值写进库），因此越界
+ * 字符串直接判非法；真数字仍沿用旧语义钳制到边界。
+ */
+function normalizeSetting(rule, raw) {
+  switch (rule?.type) {
+    case 'int':
+    case 'number': {
+      let numeric
+      if (typeof raw === 'number' && Number.isFinite(raw)) {
+        numeric = raw
+      } else if (typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw))) {
+        numeric = Number(raw)
+        if (numeric < rule.min || numeric > rule.max) return { valid: false }
+      } else {
+        return { valid: false }
+      }
+      const clamped = Math.min(rule.max, Math.max(rule.min, numeric))
+      return { valid: true, value: rule.type === 'int' ? Math.round(clamped) : clamped }
+    }
+    case 'bool':
+      return typeof raw === 'boolean' ? { valid: true, value: raw } : { valid: false }
+    case 'enum':
+      return rule.values.includes(raw) ? { valid: true, value: raw } : { valid: false }
+    case 'timeZone': {
+      if (raw === null) return { valid: true, value: null }
+      if (typeof raw !== 'string' || raw.trim() === '') return { valid: false }
+      try {
+        new Intl.DateTimeFormat(undefined, { timeZone: raw })
+        return { valid: true, value: raw }
+      } catch { return { valid: false } }
+    }
+    case 'objectOrNull':
+      if (raw === null) return { valid: true, value: null }
+      return typeof raw === 'object' && !Array.isArray(raw) ? { valid: true, value: raw } : { valid: false }
+    case 'string':
+      return typeof raw === 'string' ? { valid: true, value: raw } : { valid: false }
+    default:
+      return { valid: false }
+  }
+}
+
+/** 先全量校验补丁再落库：任何字段非法都整包拒绝，绝不半写入。 */
+function validateSettingsPatch(patch) {
+  const values = {}
+  // 未知键直接拒绝：拼错的键不能被当成「已保存」而静默丢掉。
+  for (const key of Object.keys(patch)) {
+    if (!Object.hasOwn(SETTING_RULES, key)) return { ok: false, field: key }
+  }
+  for (const [key, rule] of Object.entries(SETTING_RULES)) {
+    if (patch[key] === undefined) continue
+    const normalized = normalizeSetting(rule, patch[key])
+    if (!normalized.valid) return { ok: false, field: key }
+    values[key] = normalized.value
+  }
+  return { ok: true, values }
+}
+
+/**
+ * 清洗已落库设置（升级/手工改坏的 settings 表）：非法值回退到该键的默认值，
+ * 避免 statsTimeZone 非法时 dayOf 抛 RangeError 让 /state、/settings、SSE 全挂。
+ */
+function sanitizeSettings(raw, defaults = DEFAULT_SETTINGS) {
+  const out = {}
+  for (const [key, rule] of Object.entries(SETTING_RULES)) {
+    const normalized = normalizeSetting(rule, raw?.[key])
+    out[key] = normalized.valid ? normalized.value : defaults[key]
+  }
+  return out
+}
+
 /* ---------------- apply ---------------- */
 
 export function apply(ctx, config) {
@@ -155,13 +261,25 @@ export function apply(ctx, config) {
     }
     let running = null
     let history = []
-    for (const [, s] of domain.table('sessions').entries()) {
+    const LIVE_STATUSES = ['focus', 'paused', 'break', 'longBreak']
+    // Retention: settled session rows older than maxSessionDays are dropped on
+    // boot. Without this the sessions table grows forever (2 rows per pomodoro)
+    // and every single-layout write rewrites the whole file + fsync.
+    const retentionDays = Math.max(1, Number(cfg.maxSessionDays) || 90)
+    const retentionCutoff = now() - retentionDays * 86_400_000
+    const sessionsTable = domain.table('sessions')
+    for (const [, s] of sessionsTable.entries()) {
       if (s._deleted) continue // tombstone（测试清理/审计删除）不进运行态也不进历史
-      if (['focus', 'paused', 'break', 'longBreak', 'waiting'].includes(s.status) && !s.settledAt) {
-        if (!running || s.startedAt > running.startedAt) running = s
-      } else {
-        history.push(s)
+      // waiting 是「休息已结算、但轮次未终态」的行（§4.3.1）：settledAt 非空却仍要
+      // 恢复成 running，否则重启后它会被当成终态入 history，waiting 提示丢失。
+      // 修复前 waiting 从未落库，所以这里不会复活任何历史幽灵行。
+      if (s.status === 'waiting' || (LIVE_STATUSES.includes(s.status) && !s.settledAt)) {
+        if (!running || (s.startedAt ?? 0) > (running.startedAt ?? 0)) running = s
+        continue
       }
+      // 过期结算行不再进内存历史；实际删除由背景小批量任务完成（见 pruneSettledSessions）。
+      if ((s.settledAt ?? s.startedAt ?? 0) < retentionCutoff) continue
+      history.push(s)
     }
     history.sort((a, b) => (a.settledAt ?? 0) - (b.settledAt ?? 0))
     // v0.3 tables + engine meta (tombstones filtered — probe-safe deletion).
@@ -188,10 +306,14 @@ export function apply(ctx, config) {
       }
     }
     proposals.sort((a, b) => b.createdAt - a.createdAt)
+    // 已落库设置可能是旧版本/手工改坏的值（字符串数字、火星时区、未知 mode）：
+    // 合并后统一按 SETTING_RULES 清洗，非法值回退到该键默认值，否则一个坏时区
+    // 会让 dayOf 在每次 snapshotOf 时抛 RangeError（/state、/settings、SSE 全挂）。
+    const baseSettings = { ...DEFAULT_SETTINGS, focusMin: cfg.focusMin, breakMin: cfg.breakMin, longBreakMin: cfg.longBreakMin }
     const engineState = {
       pet: petRow,
       running, history: history.slice(-200), days,
-      settings: { ...DEFAULT_SETTINGS, focusMin: cfg.focusMin, breakMin: cfg.breakMin, longBreakMin: cfg.longBreakMin, ...settings },
+      settings: sanitizeSettings({ ...baseSettings, ...settings }, baseSettings),
       roundIndex: running?.roundIndex ?? 0,
       tasks, groups, achievements, inventory,
       activeTaskId: meta.activeTaskId ?? null,
@@ -200,7 +322,7 @@ export function apply(ctx, config) {
     }
     return {
       engineState, proposals,
-      settingsTable: domain.table('settings'), sessionsTable: domain.table('sessions'), daysTable: domain.table('days'), petsTable,
+      settingsTable: domain.table('settings'), sessionsTable, daysTable: domain.table('days'), petsTable,
       tasksTable: domain.table('tasks'), groupsTable: domain.table('groups'),
       achievementsTable: domain.table('achievements'), inventoryTable: domain.table('inventory'),
       proposalsTable, auditLogTable: domain.table('audit_log'),
@@ -218,9 +340,16 @@ export function apply(ctx, config) {
       || prevState.pet.rounds !== pet.rounds || prevState.pet.outfitId !== pet.outfitId) {
       await tables.petsTable.put('default', { ...pet })
     }
-    if (prevState?.running?.id !== engineState.running?.id || prevState?.running?.revision !== engineState.running?.revision) {
-      if (prevState?.running) await tables.sessionsTable.put(prevState.running.id, { ...prevState.running, settledAt: prevState.running.settledAt ?? now() })
-      if (engineState.running) await tables.sessionsTable.put(engineState.running.id, { ...engineState.running })
+    // Compare the whole row, not just id/revision: the break→waiting transition
+    // keeps both unchanged (it only flips status/settledAt), so the old check
+    // skipped the write and every host restart re-settled the finished break
+    // (+2 EXP each time). The fingerprint also covers any future field that
+    // forgets to bump revision.
+    const prevRunning = prevState?.running ?? null
+    const nextRunning = engineState.running ?? null
+    if (JSON.stringify(prevRunning) !== JSON.stringify(nextRunning)) {
+      if (prevRunning) await tables.sessionsTable.put(prevRunning.id, { ...prevRunning, settledAt: prevRunning.settledAt ?? now() })
+      if (nextRunning) await tables.sessionsTable.put(nextRunning.id, { ...nextRunning })
     }
     // 终态行落库：transition 把 settled 行（done/skipped/completed + outcome）追加进
     // history，上面 prevState.running 写的是终止前的旧快照，必须以 history 里的
@@ -580,10 +709,20 @@ export function apply(ctx, config) {
 
   /* ---------------- HTTP routes (M0 V2 pattern) ---------------- */
 
-  let connection
-  try { connection = ctx.connection } catch { /* optional */ }
+  // The connection service must be resolved per request through ctx.get():
+  // reading `ctx.connection` throws for a service missing from `inject`, and the
+  // old try/catch swallowed that error — which silently disabled the Host/Origin
+  // trust fence on every /dsh-pomodoro/* route. Fail closed when the service is
+  // absent so these routes can never become an unauthenticated side channel.
+  const connectionOf = () => {
+    try { return ctx.get?.('connection') } catch { return undefined }
+  }
   const rejected = (req, res) => {
-    if (connection?.requestRejection === undefined) return false
+    const connection = connectionOf()
+    if (typeof connection?.requestRejection !== 'function') {
+      sendJson(res, 503, { ok: false, code: 'untrusted', message: 'connection service unavailable' })
+      return true
+    }
     const code = connection.requestRejection({ headers: req.headers })
     if (code === undefined) return false
     res.statusCode = code
@@ -666,24 +805,16 @@ export function apply(ctx, config) {
         const body = await readBody(req)
         let patch
         try { patch = JSON.parse(String(body ?? '')) } catch { patch = null }
-        if (typeof patch !== 'object' || patch === null) return sendJson(res, 400, { ok: false, code: 'invalid' })
+        if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) return sendJson(res, 400, { ok: false, code: 'invalid' })
+        // 逐键校验（SETTING_RULES）：任何字段非法 → 400 且一个都不写；数值字符串
+        // 允许 Number() 友好接受（但越界字符串直接拒绝），非法 IANA 时区/未知枚举
+        // 也在这里被挡住。先校验后落库，避免半写入。
+        const checked = validateSettingsPatch(patch)
+        if (!checked.ok) return sendJson(res, 400, { ok: false, code: 'invalid', field: checked.field })
         await serialize(async () => {
           const env = await withEngine()
-          const allowed = [
-            'focusMin', 'breakMin', 'longBreakMin', 'roundsPerLong', 'soundEnabled', 'statsTimeZone',
-            'petPosition', 'petScale', 'mode', 'defaultQuadrant',
-            // v0.4 (§10.2 settings 全量键)
-            'volume', 'notificationEnabled', 'animationEnabled', 'dailyGoalPomodoros',
-            'maxPauseMin', 'auditEnabled', 'reconcileIntervalMs', 'dailyFeedLimit',
-          ]
           let reconcileChanged = false
-          // 数值键合法域（D19/D20）：越界钳制到边界，避免写入非法值。
-          const clamp = { focusMin: [5, 120], breakMin: [1, 60], longBreakMin: [1, 120], roundsPerLong: [2, 12], dailyGoalPomodoros: [1, 50], maxPauseMin: [1, 60], dailyFeedLimit: [0, 20], volume: [0, 1], petScale: [0.5, 2], reconcileIntervalMs: [10_000, 600_000] }
-          for (const key of allowed) {
-            if (patch[key] === undefined) continue
-            let value = patch[key]
-            const range = clamp[key]
-            if (range && typeof value === 'number' && Number.isFinite(value)) value = Math.min(range[1], Math.max(range[0], value))
+          for (const [key, value] of Object.entries(checked.values)) {
             if (key === 'reconcileIntervalMs' && value !== env.engineState.settings.reconcileIntervalMs) reconcileChanged = true
             env.engineState.settings[key] = value
             await env.settingsTable.put(key, { value })
@@ -1064,6 +1195,33 @@ export function apply(ctx, config) {
   /* v0.4 (D17): 周期对账扫描 — timer 漏触发/存储写失败不丢结算。
    * 扫描 running 中 endsAt ≤ now 的未结算行，补触发 TICK_EXPIRE。 */
   let reconcileTimer = null
+  /* sessions 表按 maxSessionDays 保留。每次 delete 都会让 single 布局整文件重写，
+   * 所以这里只在小批量里清理（boot 一批 + 每个 reconcile tick 一批），既避免启动
+   * 时上千行一起删造成长时间写放大，也能让历史积累的文件在后台逐步瘦身。 */
+  let pruneRunning = false
+  async function pruneSettledSessions(limit = 5) {
+    const env = await withEngine()
+    const retentionDays = Math.max(1, Number(cfg.maxSessionDays) || 90)
+    const cutoff = now() - retentionDays * 86_400_000
+    const stale = []
+    for (const [id, s] of env.sessionsTable.entries()) {
+      if (s._deleted || s.status === 'waiting') continue
+      if (['focus', 'paused', 'break', 'longBreak'].includes(s.status) && !s.settledAt) continue
+      if ((s.settledAt ?? s.startedAt ?? 0) >= cutoff) continue
+      stale.push(id)
+      if (stale.length >= limit) break
+    }
+    for (const id of stale) await removeRow(env.sessionsTable, id)
+    return stale.length
+  }
+  const scheduleSessionPrune = (limit = 5) => {
+    if (pruneRunning) return
+    pruneRunning = true
+    void serialize(async () => {
+      try { await pruneSettledSessions(limit) } finally { pruneRunning = false }
+    }).catch(() => { pruneRunning = false })
+  }
+
   async function setupReconcile() {
     try {
       const env = await withEngine()
@@ -1075,6 +1233,7 @@ export function apply(ctx, config) {
           && ['focus', 'break', 'longBreak'].includes(r.status)) {
           void dispatch(TICK_EXPIRE(), 'reconcile')
         }
+        scheduleSessionPrune(5)
       }, ms)
       reconcileTimer.unref?.()
     } catch { /* storage not ready yet — boot effect re-runs this */ }
@@ -1111,6 +1270,8 @@ export function apply(ctx, config) {
     }
     // paused: zero action — remainingMs frozen in storage (§4.1).
     await setupReconcile()
+    // One small deterministic batch on boot; the reconcile timer drains the rest.
+    await serialize(() => pruneSettledSessions(5)).catch(() => {})
     ctx.logger.info?.('pomodoro-pet: service ready, recovery checked')
   }, 'pomodoro-pet: boot recovery')
 
@@ -1220,7 +1381,11 @@ export function apply(ctx, config) {
             // Simple daily cap via settings table (v0.4: dailyFeedLimit 可配)。
             const feedRow = env.settingsTable.get('_feeds_' + todayKey)
             const count = (feedRow?.value ?? 0)
-            const limit = Math.max(0, Number(s.settings.dailyFeedLimit ?? 3) || 3)
+            // 0 是合法配置（当天禁止喂食），不能用 `|| 3` 把配置的 0 打回默认 3。
+            const rawLimit = Number(s.settings.dailyFeedLimit)
+            const limit = Number.isFinite(rawLimit)
+              ? Math.min(20, Math.max(0, Math.round(rawLimit)))
+              : DEFAULT_SETTINGS.dailyFeedLimit
             if (args.petAction === 'feed' && count >= limit) {
               return { ok: false, code: 'daily-limit', summary: `今天已经喂过 ${limit} 次啦,宠物吃撑了(每日上限 ${limit} 次)` }
             }
