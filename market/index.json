@@ -74,11 +74,9 @@
       "versions": [
         {
           "version": "0.9.1",
-          "publishTimestamp": 1792891252,
+          "publishTimestamp": 1792897955,
           "source": {
-            "type": "git",
-            "url": "https://github.com/gitByteFree/dsh-pomodoro-pet",
-            "commit": "d560329868157d8ad26c9554f20b1cb1b6e36007"
+            "type": "npm"
           },
           "engines": {
             "dsh": ">=0.2.1-rc.2"
